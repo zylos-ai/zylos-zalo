@@ -1,8 +1,5 @@
 /**
  * Configuration loader for zylos-zalo
- *
- * Loads config from ~/zylos/components/zalo/config.json
- * with hot-reload support via file watcher.
  */
 
 import fs from 'fs';
@@ -12,88 +9,60 @@ const HOME = process.env.HOME;
 export const DATA_DIR = path.join(HOME, 'zylos/components/zalo');
 export const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 
-// Default configuration
 export const DEFAULT_CONFIG = {
   enabled: true,
-  settings: {}
+  botToken: null,
+  owner: { user_id: null, name: null, bound_at: null },
+  dmPolicy: 'owner',
+  dmAllowFrom: [],
+  groupPolicy: 'allowlist',
+  groups: {},
+  delivery: 'polling',
+  webhookUrl: null,
+  webhookSecret: null,
+  webhookPath: '/zalo/webhook',
+  message: {
+    context_messages: 5,
+    maxLength: 2000
+  },
+  internal_port: 3462
 };
 
-let config = null;
-let configWatcher = null;
+function deepMerge(defaults, overrides) {
+  const result = { ...defaults };
+  for (const [key, val] of Object.entries(overrides)) {
+    if (val && typeof val === 'object' && !Array.isArray(val) && typeof defaults[key] === 'object' && !Array.isArray(defaults[key])) {
+      result[key] = deepMerge(defaults[key], val);
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
+}
 
-/**
- * Load configuration from file
- * @returns {Object} Configuration object
- */
 export function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
-      const content = fs.readFileSync(CONFIG_PATH, 'utf8');
-      config = { ...DEFAULT_CONFIG, ...JSON.parse(content) };
-    } else {
-      console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
-      config = { ...DEFAULT_CONFIG };
+      const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      return deepMerge(DEFAULT_CONFIG, parsed);
     }
+    console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
+    return { ...DEFAULT_CONFIG };
   } catch (err) {
     console.error(`[zalo] Failed to load config: ${err.message}`);
-    config = { ...DEFAULT_CONFIG };
+    return { ...DEFAULT_CONFIG };
   }
-  return config;
 }
 
-/**
- * Get current configuration
- * @returns {Object} Configuration object
- */
-export function getConfig() {
-  if (!config) {
-    loadConfig();
-  }
-  return config;
-}
-
-/**
- * Save configuration to file
- * @param {Object} newConfig - Configuration to save
- */
-export function saveConfig(newConfig) {
+export function saveConfig(config) {
+  const tmp = CONFIG_PATH + '.tmp';
   try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2));
-    config = newConfig;
+    fs.writeFileSync(tmp, JSON.stringify(config, null, 2));
+    fs.renameSync(tmp, CONFIG_PATH);
+    return true;
   } catch (err) {
     console.error(`[zalo] Failed to save config: ${err.message}`);
-    throw err;
-  }
-}
-
-/**
- * Start watching config file for changes
- * @param {Function} onChange - Callback when config changes
- */
-export function watchConfig(onChange) {
-  if (configWatcher) {
-    configWatcher.close();
-  }
-
-  if (fs.existsSync(CONFIG_PATH)) {
-    configWatcher = fs.watch(CONFIG_PATH, (eventType) => {
-      if (eventType === 'change') {
-        console.log('[zalo] Config file changed, reloading...');
-        loadConfig();
-        if (onChange) {
-          onChange(config);
-        }
-      }
-    });
-  }
-}
-
-/**
- * Stop watching config file
- */
-export function stopWatching() {
-  if (configWatcher) {
-    configWatcher.close();
-    configWatcher = null;
+    try { fs.unlinkSync(tmp); } catch {}
+    return false;
   }
 }

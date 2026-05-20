@@ -5,7 +5,7 @@
 <h1 align="center">zylos-zalo</h1>
 
 <p align="center">
-  Zalo Bot Platform communication channel for Vietnamese messaging
+  Zalo Bot Platform communication channel for Zylos Agent
 </p>
 
 <p align="center">
@@ -19,9 +19,11 @@
 
 ---
 
-- **Feature 1** — description
-- **Feature 2** — description
-- **Feature 3** — description
+- **Dual delivery modes** — Long polling (default, no public URL needed) and webhook (production)
+- **DM access control** — Owner auto-binding, allowlist, open, or owner-only policies
+- **Typing indicators** — Sends `sendChatAction` while waiting for agent response
+- **C4 bridge integration** — Full message routing through the Zylos communication bridge
+- **Zero npm dependencies** — Uses only Node.js built-in APIs
 
 ## Install
 
@@ -34,7 +36,7 @@ Or manually:
 ```bash
 cd ~/zylos/.claude/skills
 git clone https://github.com/zylos-ai/zylos-zalo.git zalo
-cd zalo && npm install
+cd zalo
 ```
 
 ## Configuration
@@ -43,14 +45,41 @@ Edit `~/zylos/components/zalo/config.json`:
 
 ```json
 {
-  "enabled": true
+  "enabled": true,
+  "botToken": "YOUR_BOT_TOKEN",
+  "delivery": "polling",
+  "dmPolicy": "owner"
+}
+```
+
+Get your bot token from [bot.zaloplatforms.com](https://bot.zaloplatforms.com).
+
+### Webhook mode (production)
+
+```json
+{
+  "delivery": "webhook",
+  "webhookUrl": "https://your-domain.com/zalo/webhook",
+  "webhookSecret": "your-secret"
 }
 ```
 
 ## Usage
 
+Send messages via C4 bridge:
+
 ```bash
-# Example usage
+cat <<'EOF' | node ~/zylos/.claude/skills/comm-bridge/scripts/c4-send.js "zalo" "<chat_id>"
+Hello from Zylos!
+EOF
+```
+
+## Service Management
+
+```bash
+pm2 status zylos-zalo
+pm2 logs zylos-zalo
+pm2 restart zylos-zalo
 ```
 
 ## Built by Coco

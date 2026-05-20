@@ -1,16 +1,14 @@
 # zylos-zalo Design Document
 
-**Version**: v1.0.0
+**Version**: 0.1.0
 **Date**: 2026-05-20
-**Author**: Zylos Team
 **Repository**: https://github.com/zylos-ai/zylos-zalo
-**Status**: Draft
 
 ---
 
 ## 1. Overview
 
-Brief description of what this component does and why it exists.
+Zalo Bot Platform communication channel for Zylos Agent. Connects the Zylos agent to Vietnam's Zalo messaging platform via the official Bot Platform API.
 
 ## 2. Architecture
 
@@ -19,60 +17,95 @@ Brief description of what this component does and why it exists.
 ```
 zylos-zalo/
   src/
-    index.js          — Entry point (start/stop lifecycle)
-    lib/              — Core logic modules
+    index.js           — Main entry (polling/webhook, message handling, typing)
+    lib/
+      api.js           — Zalo Bot Platform API client
+      config.js        — Config loader
+      auth.js          — Owner binding + access control
+      context.js       — Chat history + message formatting
   scripts/
-    send.js           — Outbound message handler (communication components)
+    send.js            — C4 outbound send interface
   hooks/
-    UserPromptSubmit  — Claude Code hook for inbound messages (communication)
-    post-install.js   — Post-install setup
-    post-upgrade.js   — Post-upgrade config migration
-  SKILL.md            — Component specification for the Zylos agent
-  ecosystem.config.cjs — PM2 service configuration
+    configure.js       — Writes collected config to config.json
+    post-install.js    — Creates data directories
+    post-upgrade.js    — Config schema migrations
+    pre-upgrade.js     — Config backup before upgrade
 ```
 
 ### 2.2 Data Flow
 
-Describe how data flows through the component.
+**Inbound (User -> Agent):**
+1. Zalo delivers update via polling (`getUpdates`) or webhook push
+2. `handleUpdate()` dispatches by `event_name`
+3. Message handler checks auth (owner binding, DM policy)
+4. Starts typing indicator
+5. Formats message and sends to C4 via `c4-receive.js`
+6. C4 dispatches to Claude
+
+**Outbound (Agent -> User):**
+1. Claude calls `c4-send.js "zalo" "<endpoint>"`
+2. C4 routes to `scripts/send.js`
+3. `send.js` calls Zalo `sendMessage` API, chunking if > 2000 chars
+4. Writes `.done` marker to stop typing indicator
+5. Records outgoing message to internal server for history
+
+### 2.3 Delivery Modes
+
+| Mode | Config | URL Required | Use Case |
+|------|--------|-------------|----------|
+| Polling | `"delivery": "polling"` | No | Development, behind firewalls |
+| Webhook | `"delivery": "webhook"` | Yes (HTTPS) | Production |
+
+On startup, polling mode deletes any existing webhook. Webhook mode registers via `setWebhook` and cleans up on shutdown.
 
 ## 3. Configuration
-
-### 3.1 Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `EXAMPLE_API_KEY` | Yes | API key for the service |
-
-### 3.2 Config File
 
 Located at `~/zylos/components/zalo/config.json`:
 
 ```json
 {
-  "enabled": true
+  "enabled": true,
+  "botToken": "numeric_id:secret",
+  "delivery": "polling",
+  "dmPolicy": "owner",
+  "dmAllowFrom": [],
+  "webhookUrl": null,
+  "webhookSecret": null,
+  "webhookPath": "/zalo/webhook",
+  "message": {
+    "context_messages": 5,
+    "maxLength": 2000
+  },
+  "internal_port": 3462
 }
 ```
 
-## 4. Integration with Zylos
+## 4. API Surface
 
-### 4.1 Lifecycle
+Base: `https://bot-api.zaloplatforms.com/bot{TOKEN}/{method}`
 
-- **Start**: Called by PM2 via `ecosystem.config.cjs`
-- **Stop**: Graceful shutdown on SIGTERM
+All calls are POST with JSON body. Methods used:
 
-### 4.2 Message Flow
-
-Describe how messages are sent and received.
+| Method | Purpose |
+|--------|---------|
+| `getMe` | Validate token at startup |
+| `sendMessage` | Send text to chat |
+| `sendPhoto` | Send image to chat |
+| `sendChatAction` | Typing indicator |
+| `getUpdates` | Long poll for updates |
+| `setWebhook` | Register webhook URL |
+| `deleteWebhook` | Remove webhook |
 
 ## 5. Security
 
-Describe security considerations (authentication, authorization, data handling).
+- Bot token stored in `config.json` (data dir, never committed)
+- Webhook requests verified via `X-Bot-Api-Secret-Token` header
+- Internal HTTP server (record-outgoing) uses SHA-256 token derived from bot token
+- Internal server binds to 127.0.0.1 only (polling mode) or validates token (webhook mode)
 
-## 6. Error Handling
+## 6. Limitations
 
-Describe error handling strategies.
-
-## 7. Future Improvements
-
-- Improvement 1
-- Improvement 2
+- Zalo Bot Platform groups are not reliably supported — DM only for now
+- `getUpdates` returns a single update per call (unlike Telegram's array)
+- Text messages capped at 2000 characters (chunked by send.js)
+- No official quote-reply support in Zalo Bot API

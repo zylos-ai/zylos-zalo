@@ -3,10 +3,9 @@
  * Configure hook for zylos-zalo
  *
  * Called by zylos after collecting SKILL.md config.required values.
- * Receives a JSON object on stdin and writes component-owned config.json.
+ * Receives a JSON object on stdin and writes to config.json.
  *
- * Example stdin:
- *   { "ZALO_API_KEY": "secret" }
+ * Example stdin: { "ZALO_BOT_TOKEN": "123:secret" }
  */
 
 import fs from 'node:fs';
@@ -15,10 +14,14 @@ import path from 'node:path';
 const HOME = process.env.HOME;
 const DATA_DIR = path.join(HOME, 'zylos/components/zalo');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
-const COMPONENT_PREFIX = 'ZALO_';
+
+const KEY_MAP = {
+  'ZALO_BOT_TOKEN': 'botToken'
+};
 
 const DEFAULT_CONFIG = {
-  enabled: true
+  enabled: true,
+  delivery: 'polling'
 };
 
 function readStdin() {
@@ -31,46 +34,30 @@ function readStdin() {
   });
 }
 
-function readJsonFile(filePath, fallback) {
-  try {
-    if (!fs.existsSync(filePath)) return { ...fallback };
-    return { ...fallback, ...JSON.parse(fs.readFileSync(filePath, 'utf8')) };
-  } catch (err) {
-    throw new Error(`Failed to read ${filePath}: ${err.message}`);
-  }
-}
-
-function writeJsonFile(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(value, null, 2) + '\n');
-  fs.renameSync(tmpPath, filePath);
-}
-
-function configKeyFromRequiredName(name) {
-  return name
-    .replace(new RegExp(`^${COMPONENT_PREFIX}`), '')
-    .toLowerCase();
-}
-
 try {
   const raw = (await readStdin()).trim();
-  if (!raw) {
-    throw new Error('Expected stdin JSON object with collected config values');
-  }
+  if (!raw) throw new Error('Expected stdin JSON object');
 
   const collected = JSON.parse(raw);
-  if (!collected || Array.isArray(collected) || typeof collected !== 'object') {
-    throw new Error('Configure input must be a JSON object');
-  }
+  if (!collected || typeof collected !== 'object') throw new Error('Input must be a JSON object');
 
-  const config = readJsonFile(CONFIG_PATH, DEFAULT_CONFIG);
+  let config = DEFAULT_CONFIG;
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      config = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) };
+    }
+  } catch {}
+
   for (const [name, value] of Object.entries(collected)) {
     if (value === undefined || value === null || value === '') continue;
-    config[configKeyFromRequiredName(name)] = value;
+    const key = KEY_MAP[name] || name.replace(/^ZALO_/, '').toLowerCase();
+    config[key] = value;
   }
 
-  writeJsonFile(CONFIG_PATH, config);
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const tmp = CONFIG_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n');
+  fs.renameSync(tmp, CONFIG_PATH);
   console.log(`[configure] Wrote config to ${CONFIG_PATH}`);
 } catch (err) {
   console.error(`[configure] ${err.message}`);

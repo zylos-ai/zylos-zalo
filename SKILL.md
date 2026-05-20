@@ -1,13 +1,18 @@
 ---
 name: zalo
 version: 0.1.0
-description: >
-  Zalo Bot Platform communication channel for Vietnamese messaging. Use when ...
-  (Include trigger patterns: what user requests should activate this component)
-type: communication  # communication | capability | utility
+description: >-
+  Zalo Bot Platform communication channel (polling + webhook modes).
+  Use when: (1) replying to Zalo messages (DM),
+  (2) sending proactive messages to Zalo users,
+  (3) managing DM access control (dmPolicy: open/allowlist/owner, dmAllowFrom list),
+  (4) configuring the bot (delivery mode, webhook settings),
+  (5) troubleshooting Zalo bot connection issues.
+  Config at ~/zylos/components/zalo/config.json. Service: pm2 zylos-zalo.
+type: communication
 
 lifecycle:
-  npm: true
+  npm: false
   service:
     type: pm2
     name: zylos-zalo
@@ -20,18 +25,8 @@ lifecycle:
     post-upgrade: hooks/post-upgrade.js
   preserve:
     - config.json
+    - logs/
     - data/
-
-# For HTTP services exposed through Zylos Caddy, prefer a root-internal app:
-# - The component listens on localhost and serves internal routes at /.
-# - Caddy exposes it at /zalo/*, strips that prefix, and forwards
-#   X-Forwarded-Prefix. Browser URLs should be relative by default and should
-#   use X-Forwarded-Prefix when present.
-# http_routes:
-#   - path: /zalo/*
-#     type: reverse_proxy
-#     target: localhost:3000
-#     strip_prefix: /zalo
 
 upgrade:
   repo: zylos-ai/zylos-zalo
@@ -39,23 +34,57 @@ upgrade:
 
 config:
   required:
-    # Values are collected by zylos and passed to lifecycle.hooks.configure as stdin JSON.
-    # The configure hook decides how to store them in config.json.
-    # - name: ZALO_API_KEY
-    #   description: API key for zalo
-    #   sensitive: true
-  optional:
-    # - name: ZALO_DEBUG
-    #   description: Enable debug mode
-    #   default: "false"
+    - name: ZALO_BOT_TOKEN
+      description: "Zalo Bot Platform token (numeric_id:secret format, from bot.zaloplatforms.com)"
+      sensitive: true
 
-dependencies: []
+dependencies:
+  - comm-bridge
 ---
 
-# Zalo
+# Zalo Bot
 
+Zalo Bot Platform messaging component for Zylos Agent.
+
+Depends on: comm-bridge (C4 message routing).
+
+## Sending Messages
+
+Via C4 Bridge (always use stdin form):
 ```bash
-# Example usage commands here
+cat <<'EOF' | node ~/zylos/.claude/skills/comm-bridge/scripts/c4-send.js "zalo" "<chat_id>"
+message
+EOF
 ```
 
-Run `node ~/zylos/.claude/skills/zalo/scripts/<script>.js --help` for all options.
+Or directly (for testing):
+```bash
+node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "message"
+```
+
+## Config Location
+
+- Config: `~/zylos/components/zalo/config.json`
+- Logs: `~/zylos/components/zalo/logs/`
+
+## Delivery Modes
+
+**Polling (default):** No public URL needed. Set `"delivery": "polling"` in config.
+
+**Webhook:** Set in config:
+```json
+{
+  "delivery": "webhook",
+  "webhookUrl": "https://your-domain.com/zalo/webhook",
+  "webhookSecret": "your-secret",
+  "webhookPath": "/zalo/webhook"
+}
+```
+
+## Service Management
+
+```bash
+pm2 status zylos-zalo
+pm2 logs zylos-zalo
+pm2 restart zylos-zalo
+```
