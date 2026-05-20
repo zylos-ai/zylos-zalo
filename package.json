@@ -1,0 +1,30 @@
+{
+  "name": "zylos-zalo",
+  "version": "0.1.0",
+  "description": "Zalo Bot Platform communication channel for Vietnamese messaging",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "homepage": "https://github.com/zylos-ai/zylos-zalo#readme",
+  "bugs": {
+    "url": "https://github.com/zylos-ai/zylos-zalo/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zylos-ai/zylos-zalo.git"
+  },
+  "keywords": [
+    "zylos",
+    "zalo",
+    "agent"
+  ],
+  "author": "Zylos AI",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {}
+}
