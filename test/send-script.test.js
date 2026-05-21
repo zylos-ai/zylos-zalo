@@ -49,6 +49,53 @@ test('send script sends text chunks and records outgoing messages', async () => 
   }
 });
 
+test('send script reads message content from stdin before CLI args', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1',
+      'cli fallback'
+    ], {
+      env: { HOME: home, ZALO_FETCH_LOG: fetchLog },
+      input: 'stdin **wins**\n'
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', text: 'stdin wins' });
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script accepts stdin-only message content', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1'
+    ], {
+      env: { HOME: home, ZALO_FETCH_LOG: fetchLog },
+      input: 'hello from stdin\n'
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', text: 'hello from stdin' });
+  } finally {
+    cleanupDir(home);
+  }
+});
+
 test('send script uses configured API base and sends stickers', async () => {
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');

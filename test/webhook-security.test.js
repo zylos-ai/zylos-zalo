@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { freshImport } from './helpers.js';
 
-test('timingSafeStringEqual compares strings without accepting mismatched lengths or types', async () => {
+test('timingSafeStringEqual compares hashed strings without accepting mismatches or types', async () => {
   const { timingSafeStringEqual } = await freshImport('src/lib/webhook-security.js');
   assert.equal(timingSafeStringEqual('secret', 'secret'), true);
   assert.equal(timingSafeStringEqual('secret', 'Secret'), false);
   assert.equal(timingSafeStringEqual('secret', 'secret-extra'), false);
+  assert.equal(timingSafeStringEqual('x', 'much-longer-value'), false);
   assert.equal(timingSafeStringEqual(undefined, 'secret'), false);
 });
 

@@ -114,8 +114,8 @@ All calls are POST with JSON body. Methods used:
 ## 5. Security
 
 - Bot token stored in `config.json` or `ZALO_BOT_TOKEN` in `~/zylos/.env`
-- Webhook requests verified via `X-Bot-Api-Secret-Token` header with
-  timing-safe comparison
+- Webhook mode requires `webhookSecret`; requests are verified via
+  `X-Bot-Api-Secret-Token` header with timing-safe comparison
 - Webhook mode applies fixed-window request rate limiting and 5-minute replay
   deduplication by event/chat/message id
 - Internal HTTP server (record-outgoing) uses SHA-256 token derived from bot token
@@ -129,4 +129,6 @@ All calls are POST with JSON body. Methods used:
   require a public HTTP(S) URL
 - `getUpdates` returns a single update per call (unlike Telegram's array)
 - Text messages capped at 2000 characters (chunked by send.js)
-- No official quote-reply support in Zalo Bot API
+- No verified quote-reply support in the Zalo Bot Platform API wrapper yet;
+  outbound replies are sent as plain messages while preserving C4 correlation
+  ids

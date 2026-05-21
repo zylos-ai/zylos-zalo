@@ -15,12 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Webhook timing-safe secret comparison, replay deduplication, and fixed-window rate limiting.
 - Configurable Zalo Bot API base URL via `apiBaseUrl`.
 - Outbound sticker sending with `[MEDIA:sticker]`.
+- Inbound sticker event forwarding.
 
 ### Changed
 - Outbound `[MEDIA:image]` now requires a public HTTP(S) URL instead of accepting local paths that Zalo cannot fetch directly.
 - `sendPhoto` validates that photo values are absolute HTTP(S) URLs before posting to Zalo.
 - Outbound text now strips Markdown and chunks long messages on paragraph breaks before line/space fallback.
 - Polling now requests a numeric 10-second timeout with `limit: 100`.
+- `send.js` now reads stdin before CLI message arguments for C4-safe message delivery.
+- Webhook mode now requires `webhookSecret`; public unauthenticated webhooks are rejected at startup.
 
 ## [0.1.0] - 2026-05-20
 

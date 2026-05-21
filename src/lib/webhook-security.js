@@ -2,9 +2,8 @@ import crypto from 'crypto';
 
 export function timingSafeStringEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
+  const aBuf = crypto.createHash('sha256').update(a).digest();
+  const bBuf = crypto.createHash('sha256').update(b).digest();
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 

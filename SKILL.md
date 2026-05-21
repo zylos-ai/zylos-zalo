@@ -96,7 +96,7 @@ owner is always allowed.
 
 Webhook mode verifies the secret with timing-safe comparison, rate-limits
 requests, and ignores duplicate event/chat/message ids during the configured
-dedup window.
+dedup window. `webhookSecret` is required in webhook mode.
 
 Inbound Zalo image events are downloaded to `media/` and forwarded to C4 as file
 attachments. The default max image size is 10 MB and can be adjusted with
@@ -136,3 +136,7 @@ pass that URL to Zalo `sendPhoto`.
 ```bash
 node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "[MEDIA:sticker]<sticker_id>"
 ```
+
+Inbound sticker events are forwarded as text markers. The Bot Platform wrapper
+does not currently implement quote replies; outbound replies are plain messages
+until the quote-reply API contract is verified.

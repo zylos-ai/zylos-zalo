@@ -23,6 +23,7 @@
 - **DM access control** — Owner auto-binding, allowlist, open, or owner-only policies
 - **Group routing** — Allowlisted group chats with per-group sender allowlists and replayed context
 - **Inbound image download** — Downloads received Zalo images into component media storage and forwards them to C4 as file attachments
+- **Sticker support** — Forwards inbound stickers and sends outbound stickers
 - **Webhook hardening** — Timing-safe secret checks, request rate limiting, and short-window replay deduplication
 - **Outbound formatting** — Markdown is flattened before sending, long messages split on paragraphs, and stickers are supported
 - **Typing indicators** — Sends `sendChatAction` while waiting for agent response
@@ -114,6 +115,10 @@ Local outbound image files are not hosted automatically yet. The concrete path
 for that is a short-lived HTTPS media route on the component's webhook server
 that exposes local files as tokenized public URLs before calling Zalo
 `sendPhoto`.
+
+The Bot Platform API wrapper does not implement quote replies. C4 endpoint
+message ids are preserved for correlation, but outbound replies are sent as
+plain messages until a verified Bot Platform quote-reply contract exists.
 
 ## Service Management
 

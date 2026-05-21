@@ -3,8 +3,9 @@
  * C4 send interface for zylos-zalo
  *
  * Usage:
+ *   echo "message text" | node scripts/send.js <endpoint_id>
  *   node scripts/send.js <endpoint_id> "message text"
- *   node scripts/send.js <endpoint_id> "[MEDIA:image]https://example.com/image.png"
+ *   echo "[MEDIA:image]https://example.com/image.png" | node scripts/send.js <endpoint_id>
  */
 
 import fs from 'fs';
@@ -16,13 +17,36 @@ import { sendMessage, sendPhoto, sendSticker, setApiBaseUrl } from '../src/lib/a
 const MAX_LENGTH = 2000;
 
 const args = process.argv.slice(2);
-if (args.length < 2) {
-  console.error('Usage: send.js <endpoint_id> <message>');
+if (args.length < 1) {
+  console.error('Usage: send.js <endpoint_id> [message]');
+  console.error('       echo "message" | send.js <endpoint_id>');
   process.exit(1);
 }
 
 const endpointRaw = args[0];
-const message = args.slice(1).join(' ');
+const cliMessage = args.slice(1).join(' ');
+
+function readStdin(timeoutMs) {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) {
+      resolve('');
+      return;
+    }
+    let data = '';
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      process.stdin.pause();
+      resolve(data);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', chunk => { data += chunk; });
+    process.stdin.on('end', finish);
+  });
+}
 
 function parseEndpoint(raw) {
   const result = { chatId: null, msg: null, req: null };
@@ -136,6 +160,14 @@ async function sendText(text) {
 }
 
 async function main() {
+  const stdinData = await readStdin(cliMessage ? 100 : 5000);
+  const message = stdinData.trim() || cliMessage;
+
+  if (!message) {
+    console.error('Error: no message provided');
+    process.exit(1);
+  }
+
   try {
     if (message.trim() === '[SKIP]') {
       markTypingDone();

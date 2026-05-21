@@ -185,6 +185,8 @@ async function handleUpdate(update) {
     handleTextMessage(update);
   } else if (eventName === 'message.image.received') {
     await handleImageMessage(update);
+  } else if (eventName === 'message.sticker.received') {
+    handleStickerMessage(update);
   } else {
     console.log(`[zalo] Unhandled event: ${eventName}`);
   }
@@ -313,6 +315,18 @@ async function handleImageMessage(update) {
   processAuthorizedMessage({ info, text, mediaPath });
 }
 
+function handleStickerMessage(update) {
+  config = loadConfig();
+
+  const info = getMessageInfo(update);
+  if (!info.chatId) return;
+  if (!authorizeMessage(info)) return;
+
+  const stickerId = info.message.sticker_id || info.message.stickerId || info.message.id || '';
+  const text = stickerId ? `[sent a sticker: ${stickerId}]` : '[sent a sticker]';
+  processAuthorizedMessage({ info, text, mediaPath: null });
+}
+
 // ============================================================
 // Polling mode
 // ============================================================
@@ -418,6 +432,11 @@ async function runWebhook() {
     process.exit(1);
   }
 
+  if (!webhookSecret) {
+    console.error('[zalo] webhookSecret is required in webhook mode');
+    process.exit(1);
+  }
+
   startWebhookServer(port, webhookPath, webhookSecret);
 
   try {
@@ -437,7 +456,7 @@ const INTERNAL_TOKEN = crypto.createHash('sha256').update(botToken).digest('hex'
 
 function handleRecordOutgoing(req, res) {
   const token = req.headers['x-internal-token'];
-  if (token !== INTERNAL_TOKEN) {
+  if (!timingSafeStringEqual(token, INTERNAL_TOKEN)) {
     res.writeHead(403).end('forbidden');
     return;
   }
