@@ -34,7 +34,7 @@ test('send script sends text chunks and records outgoing messages', async () => 
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
       'chat-1|req:req-1',
-      'hello world'
+      '**hello** [world](https://example.com)'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
     });
@@ -42,8 +42,31 @@ test('send script sends text chunks and records outgoing messages', async () => 
     assert.equal(result.code, 0, result.stderr);
     const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
     assert.equal(calls[0].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendMessage');
-    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', text: 'hello world' });
+    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', text: 'hello world (https://example.com)' });
     assert.equal(fs.existsSync(path.join(home, 'zylos/components/zalo/typing/req-1.done')), true);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script uses configured API base and sends stickers', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  writeConfig(home, { botToken: 'token-1', apiBaseUrl: 'https://bot-api.zapps.me', internal_port: 9 });
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1',
+      '[MEDIA:sticker]sticker-1'
+    ], {
+      env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
+    });
+    assert.equal(result.code, 0, result.stderr);
+    const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(calls[0].url, 'https://bot-api.zapps.me/bottoken-1/sendSticker');
+    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', sticker: 'sticker-1' });
   } finally {
     cleanupDir(home);
   }

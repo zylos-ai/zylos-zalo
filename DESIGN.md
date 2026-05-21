@@ -71,9 +71,16 @@ Located at `~/zylos/components/zalo/config.json`:
   "dmAllowFrom": [],
   "groupPolicy": "allowlist",
   "groups": {},
+  "apiBaseUrl": "https://bot-api.zaloplatforms.com",
   "webhookUrl": null,
   "webhookSecret": null,
   "webhookPath": "/zalo/webhook",
+  "webhook": {
+    "dedupWindowMs": 300000,
+    "dedupMaxEntries": 1000,
+    "rateLimitWindowMs": 60000,
+    "rateLimitMax": 120
+  },
   "message": {
     "context_messages": 5,
     "maxLength": 2000,
@@ -88,7 +95,8 @@ If `botToken` is omitted, the component falls back to `ZALO_BOT_TOKEN` from
 
 ## 4. API Surface
 
-Base: `https://bot-api.zaloplatforms.com/bot{TOKEN}/{method}`
+Default base: `https://bot-api.zaloplatforms.com/bot{TOKEN}/{method}`.
+Set `apiBaseUrl` if the deployment needs another Zalo Bot API host.
 
 All calls are POST with JSON body. Methods used:
 
@@ -97,6 +105,7 @@ All calls are POST with JSON body. Methods used:
 | `getMe` | Validate token at startup |
 | `sendMessage` | Send text to chat |
 | `sendPhoto` | Send image to chat |
+| `sendSticker` | Send sticker to chat |
 | `sendChatAction` | Typing indicator |
 | `getUpdates` | Long poll for updates |
 | `setWebhook` | Register webhook URL |
@@ -105,7 +114,10 @@ All calls are POST with JSON body. Methods used:
 ## 5. Security
 
 - Bot token stored in `config.json` or `ZALO_BOT_TOKEN` in `~/zylos/.env`
-- Webhook requests verified via `X-Bot-Api-Secret-Token` header
+- Webhook requests verified via `X-Bot-Api-Secret-Token` header with
+  timing-safe comparison
+- Webhook mode applies fixed-window request rate limiting and 5-minute replay
+  deduplication by event/chat/message id
 - Internal HTTP server (record-outgoing) uses SHA-256 token derived from bot token
 - Internal server binds to 127.0.0.1 only (polling mode) or validates token (webhook mode)
 - Group messages require `groupPolicy: "open"` or a configured group entry;

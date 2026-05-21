@@ -18,13 +18,21 @@ export const DEFAULT_CONFIG = {
   dmAllowFrom: [],
   groupPolicy: 'allowlist',
   groups: {},
+  apiBaseUrl: null,
   delivery: 'polling',
   webhookUrl: null,
   webhookSecret: null,
   webhookPath: '/zalo/webhook',
+  webhook: {
+    dedupWindowMs: 5 * 60 * 1000,
+    dedupMaxEntries: 1000,
+    rateLimitWindowMs: 60 * 1000,
+    rateLimitMax: 120
+  },
   message: {
     context_messages: 5,
-    maxLength: 2000
+    maxLength: 2000,
+    mediaMaxMb: 10
   },
   internal_port: 3462
 };

@@ -72,6 +72,8 @@ If `botToken` is omitted from config, the component falls back to
 `ZALO_BOT_TOKEN` from `~/zylos/.env`, matching the Telegram component's env
 token pattern. There is no tokenFile support.
 
+Set `apiBaseUrl` only when a deployment needs a non-default Zalo Bot API host.
+
 ## Group Access
 
 Groups are accepted when `groupPolicy` is `open` or the group id appears under
@@ -91,6 +93,10 @@ owner is always allowed.
   }
 }
 ```
+
+Webhook mode verifies the secret with timing-safe comparison, rate-limits
+requests, and ignores duplicate event/chat/message ids during the configured
+dedup window.
 
 Inbound Zalo image events are downloaded to `media/` and forwarded to C4 as file
 attachments. The default max image size is 10 MB and can be adjusted with
@@ -124,3 +130,9 @@ pm2 restart zylos-zalo
 hosting is the concrete remaining implementation path: expose selected local
 files through a short-lived tokenized HTTPS route on the webhook server, then
 pass that URL to Zalo `sendPhoto`.
+
+## Outbound Stickers
+
+```bash
+node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "[MEDIA:sticker]<sticker_id>"
+```

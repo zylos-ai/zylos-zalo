@@ -21,13 +21,14 @@ test('api methods post JSON payloads to the Zalo Bot API', async () => {
     assert.deepEqual(await api.getMe('token-1'), { id: 'ok' });
     assert.deepEqual(await api.sendMessage('token-1', 'chat-1', 'hello'), { id: 'ok' });
     assert.deepEqual(await api.sendPhoto('token-1', 'chat-1', 'https://example.com/a.png'), { id: 'ok' });
+    assert.deepEqual(await api.sendSticker('token-1', 'chat-1', 'sticker-1'), { id: 'ok' });
     assert.deepEqual(await api.sendChatAction('token-1', 'chat-1'), { id: 'ok' });
     assert.deepEqual(await api.getUpdates('token-1', 10, 1), { id: 'ok' });
     assert.deepEqual(await api.setWebhook('token-1', 'https://example.com/hook', 'secret'), { id: 'ok' });
     assert.deepEqual(await api.deleteWebhook('token-1'), { id: 'ok' });
     assert.deepEqual(await api.getWebhookInfo('token-1'), { id: 'ok' });
 
-    assert.equal(calls.length, 8);
+    assert.equal(calls.length, 9);
     assert.equal(calls[0].url, 'https://bot-api.zaloplatforms.com/bottoken-1/getMe');
     for (const call of calls) {
       assert.equal(call.init.method, 'POST');
@@ -35,8 +36,27 @@ test('api methods post JSON payloads to the Zalo Bot API', async () => {
     }
     assert.deepEqual(JSON.parse(calls[1].init.body), { chat_id: 'chat-1', text: 'hello' });
     assert.deepEqual(JSON.parse(calls[2].init.body), { chat_id: 'chat-1', photo: 'https://example.com/a.png' });
-    assert.deepEqual(JSON.parse(calls[4].init.body), { offset: 10, timeout: '1' });
-    assert.deepEqual(JSON.parse(calls[5].init.body), { url: 'https://example.com/hook', secret_token: 'secret' });
+    assert.deepEqual(JSON.parse(calls[3].init.body), { chat_id: 'chat-1', sticker: 'sticker-1' });
+    assert.deepEqual(JSON.parse(calls[5].init.body), { offset: 10, timeout: 1, limit: 100 });
+    assert.deepEqual(JSON.parse(calls[6].init.body), { url: 'https://example.com/hook', secret_token: 'secret' });
+  } finally {
+    restore();
+  }
+});
+
+test('api base URL can be configured', async () => {
+  const calls = [];
+  const restore = installFetch(async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ ok: true, result: { id: 'ok' } }), { status: 200 });
+  });
+  try {
+    const api = await freshImport('src/lib/api.js');
+    api.setApiBaseUrl('https://bot-api.zapps.me/');
+    assert.equal(api.getApiBaseUrl(), 'https://bot-api.zapps.me');
+    await api.getMe('token-1');
+    assert.equal(calls[0].url, 'https://bot-api.zapps.me/bottoken-1/getMe');
+    api.setApiBaseUrl(null);
   } finally {
     restore();
   }

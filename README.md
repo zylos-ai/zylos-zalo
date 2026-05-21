@@ -23,6 +23,8 @@
 - **DM access control** — Owner auto-binding, allowlist, open, or owner-only policies
 - **Group routing** — Allowlisted group chats with per-group sender allowlists and replayed context
 - **Inbound image download** — Downloads received Zalo images into component media storage and forwards them to C4 as file attachments
+- **Webhook hardening** — Timing-safe secret checks, request rate limiting, and short-window replay deduplication
+- **Outbound formatting** — Markdown is flattened before sending, long messages split on paragraphs, and stickers are supported
 - **Typing indicators** — Sends `sendChatAction` while waiting for agent response
 - **C4 bridge integration** — Full message routing through the Zylos communication bridge
 - **Zero npm dependencies** — Uses only Node.js built-in APIs
@@ -49,6 +51,7 @@ Edit `~/zylos/components/zalo/config.json`:
 {
   "enabled": true,
   "botToken": "YOUR_BOT_TOKEN",
+  "apiBaseUrl": "https://bot-api.zaloplatforms.com",
   "delivery": "polling",
   "dmPolicy": "owner"
 }
@@ -128,7 +131,8 @@ npm test
 
 The suite uses Node's built-in test runner and covers API payload/error
 handling, access control, config/env loading, context formatting/history,
-inbound media download, lifecycle hooks, and the C4 send script.
+inbound media download, webhook security helpers, lifecycle hooks, and the C4
+send script.
 
 ## Built by Coco
 

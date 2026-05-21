@@ -1,13 +1,31 @@
 /**
  * Zalo Bot Platform API client
  *
- * Wraps https://bot-api.zaloplatforms.com endpoints.
+ * Wraps Zalo Bot Platform endpoints.
  * All methods are POST with JSON body. URL pattern: /bot{TOKEN}/{method}
  */
 
-const ZALO_API_BASE = 'https://bot-api.zaloplatforms.com';
+const DEFAULT_ZALO_API_BASE = 'https://bot-api.zaloplatforms.com';
 const DEFAULT_TIMEOUT = 30000;
 const POLLING_BUFFER = 5000;
+
+let apiBaseUrl = process.env.ZALO_API_BASE || DEFAULT_ZALO_API_BASE;
+
+export function setApiBaseUrl(baseUrl) {
+  if (!baseUrl) {
+    apiBaseUrl = DEFAULT_ZALO_API_BASE;
+    return;
+  }
+  const parsed = new URL(baseUrl);
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new ZaloApiError('Zalo API base URL must use HTTP or HTTPS', 0, null);
+  }
+  apiBaseUrl = parsed.href.replace(/\/+$/, '');
+}
+
+export function getApiBaseUrl() {
+  return apiBaseUrl;
+}
 
 export class ZaloApiError extends Error {
   constructor(message, code, response) {
@@ -23,7 +41,7 @@ export class ZaloApiError extends Error {
 }
 
 async function apiCall(token, method, body = {}, timeoutMs = DEFAULT_TIMEOUT) {
-  const url = `${ZALO_API_BASE}/bot${token}/${method}`;
+  const url = `${apiBaseUrl}/bot${token}/${method}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -80,15 +98,23 @@ export function sendPhoto(token, chatId, photoUrl) {
   return apiCall(token, 'sendPhoto', { chat_id: chatId, photo: photoUrl });
 }
 
+export function sendSticker(token, chatId, sticker) {
+  if (!sticker) {
+    throw new ZaloApiError('Zalo sticker id is required', 0, null);
+  }
+  return apiCall(token, 'sendSticker', { chat_id: chatId, sticker });
+}
+
 export function sendChatAction(token, chatId, action = 'typing') {
   return apiCall(token, 'sendChatAction', { chat_id: chatId, action }, 5000);
 }
 
-export function getUpdates(token, offset, timeoutSec = 30) {
+export function getUpdates(token, offset, timeoutSec = 10, limit = 100) {
   const httpTimeout = (timeoutSec * 1000) + POLLING_BUFFER;
   return apiCall(token, 'getUpdates', {
     offset,
-    timeout: String(timeoutSec)
+    timeout: timeoutSec,
+    limit
   }, httpTimeout);
 }
 

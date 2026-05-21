@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { loadConfig, DATA_DIR } from '../src/lib/config.js';
-import { sendMessage, sendPhoto } from '../src/lib/api.js';
+import { sendMessage, sendPhoto, sendSticker, setApiBaseUrl } from '../src/lib/api.js';
 
 const MAX_LENGTH = 2000;
 
@@ -45,6 +45,7 @@ if (!chatId) {
 }
 
 const config = loadConfig();
+setApiBaseUrl(config.apiBaseUrl);
 const botToken = config.botToken;
 if (!botToken) {
   console.error('Error: botToken not set in config.json');
@@ -64,17 +65,36 @@ function splitMessage(text, maxLen) {
     }
     let breakAt = maxLen;
     const chunk = remaining.substring(0, breakAt);
-    const lastNewline = chunk.lastIndexOf('\n');
-    if (lastNewline > maxLen * 0.3) breakAt = lastNewline;
+    const lastParaBreak = chunk.lastIndexOf('\n\n');
+    if (lastParaBreak > maxLen * 0.3) breakAt = lastParaBreak + 1;
     else {
-      const lastSpace = chunk.lastIndexOf(' ');
-      if (lastSpace > maxLen * 0.3) breakAt = lastSpace;
+      const lastNewline = chunk.lastIndexOf('\n');
+      if (lastNewline > maxLen * 0.3) breakAt = lastNewline;
+      else {
+        const lastSpace = chunk.lastIndexOf(' ');
+        if (lastSpace > maxLen * 0.3) breakAt = lastSpace;
+      }
     }
     const part = remaining.substring(0, breakAt).trim();
     remaining = remaining.substring(breakAt).trim();
     if (part.length > 0) chunks.push(part);
   }
   return chunks;
+}
+
+function stripMarkdown(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, (match) => match.slice(3, -3).replace(/^\w*\n/, ''))
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s/gm, '- ')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
 }
 
 function markTypingDone() {
@@ -107,7 +127,7 @@ function sleep(ms) {
 }
 
 async function sendText(text) {
-  const chunks = splitMessage(text, MAX_LENGTH);
+  const chunks = splitMessage(stripMarkdown(text), MAX_LENGTH);
   for (let i = 0; i < chunks.length; i++) {
     await sendMessage(botToken, chatId, chunks[i]);
     console.log(`Sent chunk ${i + 1}/${chunks.length}`);
@@ -132,6 +152,16 @@ async function main() {
       markTypingDone();
       await recordOutgoing('[sent a photo]');
       console.log('Photo sent successfully');
+      return;
+    }
+
+    if (message.startsWith('[MEDIA:sticker]')) {
+      const sticker = message.substring('[MEDIA:sticker]'.length).trim();
+      if (!sticker) throw new Error('Sticker id is required');
+      await sendSticker(botToken, chatId, sticker);
+      markTypingDone();
+      await recordOutgoing('[sent a sticker]');
+      console.log('Sticker sent successfully');
       return;
     }
 

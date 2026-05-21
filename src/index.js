@@ -5,7 +5,7 @@
  * Supports both long polling (default) and webhook delivery modes.
  */
 
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import http from 'http';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -23,8 +23,11 @@ import {
 import { downloadImage } from './lib/media.js';
 import {
   getMe, getUpdates, sendMessage, sendChatAction,
-  setWebhook, deleteWebhook, ZaloApiError
+  setWebhook, deleteWebhook, ZaloApiError, setApiBaseUrl
 } from './lib/api.js';
+import {
+  createDeduper, createRateLimiter, getUpdateDedupKey, timingSafeStringEqual
+} from './lib/webhook-security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,10 +39,19 @@ if (!botToken) {
 }
 
 const C4_RECEIVE = path.join(process.env.HOME, 'zylos/.claude/skills/comm-bridge/scripts/c4-receive.js');
+const webhookDeduper = createDeduper({
+  ttlMs: config.webhook?.dedupWindowMs || 5 * 60 * 1000,
+  maxSize: config.webhook?.dedupMaxEntries || 1000
+});
+const webhookRateLimiter = createRateLimiter({
+  windowMs: config.webhook?.rateLimitWindowMs || 60 * 1000,
+  max: config.webhook?.rateLimitMax || 120
+});
 
 let botInfo = null;
 let stopped = false;
 let pollingOffset = undefined;
+setApiBaseUrl(config.apiBaseUrl);
 
 // ============================================================
 // C4 bridge
@@ -52,10 +64,15 @@ function parseC4Response(stdout) {
 
 function sendToC4(source, endpoint, content, onReject) {
   if (!content) return;
-  const safeContent = content.replace(/'/g, "'\\''");
-  const cmd = `node "${C4_RECEIVE}" --channel "${source}" --endpoint "${endpoint}" --json --content '${safeContent}'`;
+  const args = [
+    C4_RECEIVE,
+    '--channel', source,
+    '--endpoint', endpoint,
+    '--json',
+    '--content', content
+  ];
 
-  exec(cmd, { encoding: 'utf8', timeout: 30000 }, (error, stdout) => {
+  execFile(process.execPath, args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 }, (error, stdout) => {
     if (!error) {
       console.log(`[zalo] Sent to C4: ${content.substring(0, 50)}...`);
       return;
@@ -68,7 +85,7 @@ function sendToC4(source, endpoint, content, onReject) {
     }
     console.warn(`[zalo] C4 send failed, retrying in 2s: ${error.message}`);
     setTimeout(() => {
-      exec(cmd, { encoding: 'utf8', timeout: 30000 }, (retryError, retryStdout) => {
+      execFile(process.execPath, args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 }, (retryError, retryStdout) => {
         if (!retryError) return;
         const retryResponse = parseC4Response(retryStdout);
         if (retryResponse?.ok === false && retryResponse.error?.message && onReject) {
@@ -171,6 +188,12 @@ async function handleUpdate(update) {
   } else {
     console.log(`[zalo] Unhandled event: ${eventName}`);
   }
+}
+
+function isDuplicateUpdate(update) {
+  const key = getUpdateDedupKey(update);
+  if (!key) return false;
+  return webhookDeduper.isDuplicate(key);
 }
 
 function getMessageInfo(update) {
@@ -304,7 +327,7 @@ async function runPolling() {
 
   while (!stopped) {
     try {
-      const update = await getUpdates(botToken, pollingOffset, 30);
+      const update = await getUpdates(botToken, pollingOffset, 10, 100);
       if (stopped) break;
 
       if (update) {
@@ -331,9 +354,15 @@ let webhookServer = null;
 function startWebhookServer(port, webhookPath, webhookSecret) {
   webhookServer = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === webhookPath) {
+      const remoteAddress = req.socket?.remoteAddress || 'unknown';
+      if (!webhookRateLimiter.allow(remoteAddress)) {
+        res.writeHead(429).end('rate limited');
+        return;
+      }
+
       if (webhookSecret) {
         const token = req.headers['x-bot-api-secret-token'];
-        if (token !== webhookSecret) {
+        if (!timingSafeStringEqual(token, webhookSecret)) {
           res.writeHead(403).end('forbidden');
           return;
         }
@@ -350,6 +379,10 @@ function startWebhookServer(port, webhookPath, webhookSecret) {
         if (res.headersSent) return;
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          if (isDuplicateUpdate(body)) {
+            res.writeHead(200).end('duplicate');
+            return;
+          }
           handleUpdate(body).catch(err => {
             console.error(`[zalo] Webhook handling failed: ${err.message}`);
           });
