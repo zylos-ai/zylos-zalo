@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Inbound image download to component media storage with C4 file attachment forwarding.
+- Group chat routing and access control using `groupPolicy`, configured groups, per-group `allowFrom`, and group history replay.
+- `ZALO_BOT_TOKEN` fallback from `~/zylos/.env` when `botToken` is omitted from config.
+- Comprehensive Node test suite for API, auth, config, context, media, hooks, and send script behavior.
+
+### Changed
+- Outbound `[MEDIA:image]` now requires a public HTTP(S) URL instead of accepting local paths that Zalo cannot fetch directly.
+- `sendPhoto` validates that photo values are absolute HTTP(S) URLs before posting to Zalo.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added

@@ -4,7 +4,7 @@
  *
  * Usage:
  *   node scripts/send.js <endpoint_id> "message text"
- *   node scripts/send.js <endpoint_id> "[MEDIA:image]/path/to/image.png"
+ *   node scripts/send.js <endpoint_id> "[MEDIA:image]https://example.com/image.png"
  */
 
 import fs from 'fs';
@@ -124,9 +124,11 @@ async function main() {
     }
 
     if (message.startsWith('[MEDIA:image]')) {
-      const filePath = message.substring('[MEDIA:image]'.length);
-      if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
-      await sendPhoto(botToken, chatId, filePath);
+      const photoUrl = message.substring('[MEDIA:image]'.length).trim();
+      if (!/^https?:\/\//i.test(photoUrl)) {
+        throw new Error('Zalo sendPhoto requires a public HTTP(S) image URL; local file hosting is not implemented yet');
+      }
+      await sendPhoto(botToken, chatId, photoUrl);
       markTypingDone();
       await recordOutgoing('[sent a photo]');
       console.log('Photo sent successfully');

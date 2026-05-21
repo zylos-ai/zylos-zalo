@@ -42,6 +42,14 @@ export function isGroupAllowed(config, chatId) {
   return !!config.groups?.[String(chatId)];
 }
 
+export function isGroupSenderAllowed(config, chatId, senderId) {
+  if (isOwner(config, senderId)) return true;
+  const groupConfig = config.groups?.[String(chatId)] || {};
+  const allowFrom = Array.isArray(groupConfig.allowFrom) ? groupConfig.allowFrom : [];
+  if (allowFrom.length === 0 || allowFrom.includes('*')) return true;
+  return allowFrom.map(String).includes(String(senderId));
+}
+
 export function getGroupName(config, chatId, fallback) {
   const gc = config.groups?.[String(chatId)];
   return gc?.name || fallback || 'group';

@@ -8,6 +8,7 @@ import path from 'path';
 const HOME = process.env.HOME;
 export const DATA_DIR = path.join(HOME, 'zylos/components/zalo');
 export const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
+const ENV_PATH = path.join(HOME, 'zylos/.env');
 
 export const DEFAULT_CONFIG = {
   enabled: true,
@@ -28,6 +29,31 @@ export const DEFAULT_CONFIG = {
   internal_port: 3462
 };
 
+function loadDotEnv() {
+  try {
+    if (!fs.existsSync(ENV_PATH)) return;
+    const content = fs.readFileSync(ENV_PATH, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const idx = trimmed.indexOf('=');
+      if (idx <= 0) continue;
+      const key = trimmed.slice(0, idx).trim();
+      if (!key || process.env[key] !== undefined) continue;
+      let value = trimmed.slice(idx + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      process.env[key] = value;
+    }
+  } catch (err) {
+    console.warn(`[zalo] Failed to load ${ENV_PATH}: ${err.message}`);
+  }
+}
+
 function deepMerge(defaults, overrides) {
   const result = { ...defaults };
   for (const [key, val] of Object.entries(overrides)) {
@@ -41,16 +67,21 @@ function deepMerge(defaults, overrides) {
 }
 
 export function loadConfig() {
+  loadDotEnv();
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      return deepMerge(DEFAULT_CONFIG, parsed);
+      const config = deepMerge(DEFAULT_CONFIG, parsed);
+      if (!config.botToken && process.env.ZALO_BOT_TOKEN) {
+        config.botToken = process.env.ZALO_BOT_TOKEN;
+      }
+      return config;
     }
     console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
-    return { ...DEFAULT_CONFIG };
+    return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
   } catch (err) {
     console.error(`[zalo] Failed to load config: ${err.message}`);
-    return { ...DEFAULT_CONFIG };
+    return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
   }
 }
 

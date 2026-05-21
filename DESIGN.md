@@ -69,16 +69,22 @@ Located at `~/zylos/components/zalo/config.json`:
   "delivery": "polling",
   "dmPolicy": "owner",
   "dmAllowFrom": [],
+  "groupPolicy": "allowlist",
+  "groups": {},
   "webhookUrl": null,
   "webhookSecret": null,
   "webhookPath": "/zalo/webhook",
   "message": {
     "context_messages": 5,
-    "maxLength": 2000
+    "maxLength": 2000,
+    "mediaMaxMb": 10
   },
   "internal_port": 3462
 }
 ```
+
+If `botToken` is omitted, the component falls back to `ZALO_BOT_TOKEN` from
+`~/zylos/.env`.
 
 ## 4. API Surface
 
@@ -98,14 +104,17 @@ All calls are POST with JSON body. Methods used:
 
 ## 5. Security
 
-- Bot token stored in `config.json` (data dir, never committed)
+- Bot token stored in `config.json` or `ZALO_BOT_TOKEN` in `~/zylos/.env`
 - Webhook requests verified via `X-Bot-Api-Secret-Token` header
 - Internal HTTP server (record-outgoing) uses SHA-256 token derived from bot token
 - Internal server binds to 127.0.0.1 only (polling mode) or validates token (webhook mode)
+- Group messages require `groupPolicy: "open"` or a configured group entry;
+  configured groups may restrict senders with `allowFrom`
 
 ## 6. Limitations
 
-- Zalo Bot Platform groups are not reliably supported — DM only for now
+- Outbound local image files are not hosted automatically yet; outbound images
+  require a public HTTP(S) URL
 - `getUpdates` returns a single update per call (unlike Telegram's array)
 - Text messages capped at 2000 characters (chunked by send.js)
 - No official quote-reply support in Zalo Bot API

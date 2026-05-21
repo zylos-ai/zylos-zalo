@@ -8,6 +8,16 @@ import path from 'node:path';
 
 const HOME = process.env.HOME;
 const DATA_DIR = path.join(HOME, 'zylos/components/zalo');
+const ENV_PATH = path.join(HOME, 'zylos/.env');
+
+function hasEnvToken() {
+  try {
+    const content = fs.readFileSync(ENV_PATH, 'utf8');
+    return /^ZALO_BOT_TOKEN=/m.test(content);
+  } catch {
+    return false;
+  }
+}
 
 console.log('[post-install] Running zalo-specific setup...\n');
 
@@ -26,8 +36,8 @@ if (!fs.existsSync(configPath)) {
 } else {
   console.log('\nConfig already exists, skipping.');
   const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  if (!cfg.botToken) {
-    console.log('[!] botToken not found in config.json — set it before starting the service');
+  if (!cfg.botToken && !hasEnvToken()) {
+    console.log('[!] botToken not found in config.json or ZALO_BOT_TOKEN in ~/zylos/.env — set one before starting the service');
   }
 }
 

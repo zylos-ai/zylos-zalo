@@ -21,6 +21,8 @@
 
 - **Dual delivery modes** — Long polling (default, no public URL needed) and webhook (production)
 - **DM access control** — Owner auto-binding, allowlist, open, or owner-only policies
+- **Group routing** — Allowlisted group chats with per-group sender allowlists and replayed context
+- **Inbound image download** — Downloads received Zalo images into component media storage and forwards them to C4 as file attachments
 - **Typing indicators** — Sends `sendChatAction` while waiting for agent response
 - **C4 bridge integration** — Full message routing through the Zylos communication bridge
 - **Zero npm dependencies** — Uses only Node.js built-in APIs
@@ -54,6 +56,31 @@ Edit `~/zylos/components/zalo/config.json`:
 
 Get your bot token from [bot.zaloplatforms.com](https://bot.zaloplatforms.com).
 
+Alternatively, set `ZALO_BOT_TOKEN` in `~/zylos/.env`. A token in `config.json`
+takes precedence when both are present.
+
+### Group chats
+
+Groups are disabled by default unless `groupPolicy` is set to `open` or the
+group chat is present in `groups`:
+
+```json
+{
+  "groupPolicy": "allowlist",
+  "groups": {
+    "123456789": {
+      "name": "Team Chat",
+      "mode": "mention",
+      "allowFrom": ["*"],
+      "historyLimit": 5
+    }
+  }
+}
+```
+
+Set `allowFrom` to specific Zalo user IDs to restrict which group members may
+trigger the agent. The owner is always allowed.
+
 ### Webhook mode (production)
 
 ```json
@@ -74,6 +101,17 @@ Hello from Zylos!
 EOF
 ```
 
+Outbound images must use a public image URL:
+
+```bash
+node scripts/send.js "<chat_id>" "[MEDIA:image]https://example.com/image.png"
+```
+
+Local outbound image files are not hosted automatically yet. The concrete path
+for that is a short-lived HTTPS media route on the component's webhook server
+that exposes local files as tokenized public URLs before calling Zalo
+`sendPhoto`.
+
 ## Service Management
 
 ```bash
@@ -81,6 +119,16 @@ pm2 status zylos-zalo
 pm2 logs zylos-zalo
 pm2 restart zylos-zalo
 ```
+
+## Tests
+
+```bash
+npm test
+```
+
+The suite uses Node's built-in test runner and covers API payload/error
+handling, access control, config/env loading, context formatting/history,
+inbound media download, lifecycle hooks, and the C4 send script.
 
 ## Built by Coco
 

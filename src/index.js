@@ -14,12 +14,13 @@ import { fileURLToPath } from 'url';
 
 import { loadConfig, DATA_DIR } from './lib/config.js';
 import {
-  hasOwner, bindOwner, isOwner, isDmAllowed,
-  isGroupAllowed, getGroupName
+  hasOwner, bindOwner, isDmAllowed,
+  isGroupAllowed, isGroupSenderAllowed, getGroupName
 } from './lib/auth.js';
 import {
   logAndRecord, ensureReplay, getHistory, formatMessage
 } from './lib/context.js';
+import { downloadImage } from './lib/media.js';
 import {
   getMe, getUpdates, sendMessage, sendChatAction,
   setWebhook, deleteWebhook, ZaloApiError
@@ -159,114 +160,134 @@ function buildEndpoint(chatId, { messageId } = {}) {
 // Message handler
 // ============================================================
 
-function handleUpdate(update) {
+async function handleUpdate(update) {
   const eventName = update.event_name;
   if (!eventName) return;
 
   if (eventName === 'message.text.received') {
     handleTextMessage(update);
   } else if (eventName === 'message.image.received') {
-    handleImageMessage(update);
+    await handleImageMessage(update);
   } else {
     console.log(`[zalo] Unhandled event: ${eventName}`);
   }
 }
 
-function handleTextMessage(update) {
-  config = loadConfig();
-
+function getMessageInfo(update) {
   const message = update.message || {};
-  const sender = update.sender || {};
-  const chatId = sender.id || message.chat_id;
-  const text = message.text || '';
-  const messageId = message.msg_id || `${Date.now()}`;
-  const userName = sender.name || String(chatId);
+  const sender = update.sender || message.from || {};
+  const chat = message.chat || {};
+  const isGroup = chat.chat_type === 'GROUP' || message.chat_type === 'GROUP';
+  const chatId = chat.id || message.chat_id || sender.id;
+  const senderId = sender.id || chatId;
+  const userName = sender.display_name || sender.name || String(senderId || chatId);
+  const groupName = chat.name || chat.title || getGroupName(config, chatId, String(chatId));
+  const messageId = message.msg_id || message.message_id || `${Date.now()}`;
+  return { message, sender, chat, isGroup, chatId, senderId, userName, groupName, messageId };
+}
 
-  if (!chatId || !text) return;
+function authorizeMessage(info) {
+  if (!info.chatId || !info.senderId) return false;
 
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    message_id: messageId,
-    user_id: chatId,
-    user_name: userName,
-    text
-  };
-
-  // Owner binding
   if (!hasOwner(config)) {
-    bindOwner(config, chatId, userName);
-    sendMessage(botToken, chatId, 'You are now the admin of this bot.').catch(() => {});
-    return;
+    if (info.isGroup) {
+      console.log(`[zalo] Ignoring group message before owner is bound: ${info.chatId}`);
+      return false;
+    }
+    bindOwner(config, info.senderId, info.userName);
+    sendMessage(botToken, info.chatId, 'You are now the admin of this bot.').catch(() => {});
+    return false;
   }
 
-  // DM access check
-  if (!isDmAllowed(config, chatId)) {
-    sendMessage(botToken, chatId, "Sorry, I'm not available. Please ask my admin for access.").catch(() => {});
-    return;
+  if (info.isGroup) {
+    if (!isGroupAllowed(config, info.chatId)) {
+      console.log(`[zalo] Group ${info.chatId} not allowed, ignoring`);
+      return false;
+    }
+    if (!isGroupSenderAllowed(config, info.chatId, info.senderId)) {
+      console.log(`[zalo] Sender ${info.senderId} not allowed in group ${info.chatId}, ignoring`);
+      return false;
+    }
+    return true;
   }
 
-  logAndRecord(chatId, logEntry, config);
+  if (!isDmAllowed(config, info.senderId)) {
+    sendMessage(botToken, info.chatId, "Sorry, I'm not available. Please ask my admin for access.").catch(() => {});
+    return false;
+  }
 
-  const endpoint = buildEndpoint(chatId, { messageId });
-  const correlationId = `${chatId}:${messageId}`;
-  startTyping(chatId, correlationId);
+  return true;
+}
 
-  const msg = formatMessage({
-    chatType: 'dm',
-    userName,
+function buildC4Message({ info, text, mediaPath }) {
+  ensureReplay(info.chatId, config);
+  const contextMessages = info.isGroup ? getHistory(info.chatId, info.messageId, config) : null;
+  return formatMessage({
+    chatType: info.isGroup ? 'group' : 'dm',
+    groupName: info.groupName,
+    userName: info.userName,
     text,
-    contextMessages: null,
-    mediaPath: null
-  });
-
-  sendToC4('zalo', endpoint, msg, (errMsg) => {
-    stopTyping(correlationId);
-    sendMessage(botToken, chatId, errMsg).catch(() => {});
+    contextMessages,
+    mediaPath
   });
 }
 
-function handleImageMessage(update) {
-  config = loadConfig();
-
-  const message = update.message || {};
-  const sender = update.sender || {};
-  const chatId = sender.id || message.chat_id;
-  const messageId = message.msg_id || `${Date.now()}`;
-  const userName = sender.name || String(chatId);
-  const imageUrl = message.url || message.thumb || '';
-
-  if (!chatId) return;
-
-  if (!hasOwner(config)) {
-    bindOwner(config, chatId, userName);
-    return;
-  }
-  if (!isDmAllowed(config, chatId)) return;
-
-  const logEntry = {
+function processAuthorizedMessage({ info, text, mediaPath }) {
+  logAndRecord(info.chatId, {
     timestamp: new Date().toISOString(),
-    message_id: messageId,
-    user_id: chatId,
-    user_name: userName,
-    text: `[sent an image]${imageUrl ? ` url: ${imageUrl}` : ''}`
-  };
-  logAndRecord(chatId, logEntry, config);
+    message_id: info.messageId,
+    user_id: info.senderId,
+    user_name: info.userName,
+    text
+  }, config);
 
-  const endpoint = buildEndpoint(chatId, { messageId });
-  const correlationId = `${chatId}:${messageId}`;
-  startTyping(chatId, correlationId);
+  const endpoint = buildEndpoint(info.chatId, { messageId: info.messageId });
+  const correlationId = `${info.chatId}:${info.messageId}`;
+  startTyping(info.chatId, correlationId);
 
-  const msg = formatMessage({
-    chatType: 'dm',
-    userName,
-    text: '[sent an image]',
-    contextMessages: null,
-    mediaPath: null
-  });
+  const msg = buildC4Message({ info, text, mediaPath });
   sendToC4('zalo', endpoint, msg, (errMsg) => {
     stopTyping(correlationId);
-    sendMessage(botToken, chatId, errMsg).catch(() => {});
+    sendMessage(botToken, info.chatId, errMsg).catch(() => {});
   });
+}
+
+function handleTextMessage(update) {
+  config = loadConfig();
+
+  const info = getMessageInfo(update);
+  const text = info.message.text || '';
+
+  if (!info.chatId || !text) return;
+  if (!authorizeMessage(info)) return;
+  processAuthorizedMessage({ info, text, mediaPath: null });
+}
+
+async function handleImageMessage(update) {
+  config = loadConfig();
+
+  const info = getMessageInfo(update);
+  const imageUrl = info.message.photo_url || info.message.url || info.message.thumb || '';
+  const caption = info.message.caption || '';
+
+  if (!info.chatId) return;
+  if (!authorizeMessage(info)) return;
+
+  let mediaPath = null;
+  let text = caption || '[sent an image]';
+  if (imageUrl) {
+    try {
+      const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
+      const saved = await downloadImage(imageUrl, { messageId: info.messageId, maxBytes });
+      mediaPath = saved?.path || null;
+      if (!caption) text = `[sent an image] ${imageUrl}`;
+    } catch (err) {
+      console.error(`[zalo] Failed to download image ${info.messageId}: ${err.message}`);
+      text = caption || `[sent an image, download failed] ${imageUrl}`;
+    }
+  }
+
+  processAuthorizedMessage({ info, text, mediaPath });
 }
 
 // ============================================================
@@ -290,7 +311,7 @@ async function runPolling() {
         if (update.update_id !== undefined) {
           pollingOffset = update.update_id + 1;
         }
-        handleUpdate(update);
+        await handleUpdate(update);
       }
     } catch (err) {
       if (stopped) break;
@@ -329,7 +350,9 @@ function startWebhookServer(port, webhookPath, webhookSecret) {
         if (res.headersSent) return;
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-          handleUpdate(body);
+          handleUpdate(body).catch(err => {
+            console.error(`[zalo] Webhook handling failed: ${err.message}`);
+          });
           res.writeHead(200).end('ok');
         } catch {
           res.writeHead(400).end('bad request');

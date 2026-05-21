@@ -3,9 +3,9 @@ name: zalo
 version: 0.1.0
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
-  Use when: (1) replying to Zalo messages (DM),
-  (2) sending proactive messages to Zalo users,
-  (3) managing DM access control (dmPolicy: open/allowlist/owner, dmAllowFrom list),
+  Use when: (1) replying to Zalo messages (DM or allowed group),
+  (2) sending proactive messages to Zalo users or groups,
+  (3) managing DM/group access control (dmPolicy, dmAllowFrom, groupPolicy, groups),
   (4) configuring the bot (delivery mode, webhook settings),
   (5) troubleshooting Zalo bot connection issues.
   Config at ~/zylos/components/zalo/config.json. Service: pm2 zylos-zalo.
@@ -66,6 +66,35 @@ node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "message"
 
 - Config: `~/zylos/components/zalo/config.json`
 - Logs: `~/zylos/components/zalo/logs/`
+- Inbound media: `~/zylos/components/zalo/media/`
+
+If `botToken` is omitted from config, the component falls back to
+`ZALO_BOT_TOKEN` from `~/zylos/.env`, matching the Telegram component's env
+token pattern. There is no tokenFile support.
+
+## Group Access
+
+Groups are accepted when `groupPolicy` is `open` or the group id appears under
+`groups`. Per-group `allowFrom` may contain `*` or specific sender ids; the
+owner is always allowed.
+
+```json
+{
+  "groupPolicy": "allowlist",
+  "groups": {
+    "123456789": {
+      "name": "Team Chat",
+      "mode": "mention",
+      "allowFrom": ["*"],
+      "historyLimit": 5
+    }
+  }
+}
+```
+
+Inbound Zalo image events are downloaded to `media/` and forwarded to C4 as file
+attachments. The default max image size is 10 MB and can be adjusted with
+`message.mediaMaxMb`.
 
 ## Delivery Modes
 
@@ -88,3 +117,10 @@ pm2 status zylos-zalo
 pm2 logs zylos-zalo
 pm2 restart zylos-zalo
 ```
+
+## Outbound Images
+
+`[MEDIA:image]` currently requires a public HTTP(S) image URL. Local file
+hosting is the concrete remaining implementation path: expose selected local
+files through a short-lived tokenized HTTPS route on the webhook server, then
+pass that URL to Zalo `sendPhoto`.

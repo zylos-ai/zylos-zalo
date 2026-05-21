@@ -55,6 +55,18 @@ async function apiCall(token, method, body = {}, timeoutMs = DEFAULT_TIMEOUT) {
   }
 }
 
+function validatePhotoUrl(photoUrl) {
+  let parsed;
+  try {
+    parsed = new URL(photoUrl);
+  } catch {
+    throw new ZaloApiError('Zalo photo URL must be an absolute HTTP or HTTPS URL', 0, null);
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new ZaloApiError('Zalo photo URL must use HTTP or HTTPS', 0, null);
+  }
+}
+
 export function getMe(token) {
   return apiCall(token, 'getMe');
 }
@@ -64,6 +76,7 @@ export function sendMessage(token, chatId, text) {
 }
 
 export function sendPhoto(token, chatId, photoUrl) {
+  validatePhotoUrl(photoUrl);
   return apiCall(token, 'sendPhoto', { chat_id: chatId, photo: photoUrl });
 }
 
