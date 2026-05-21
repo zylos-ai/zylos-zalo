@@ -1,6 +1,6 @@
 ---
 name: zalo
-version: 0.1.0
+version: 0.1.1
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),
@@ -60,6 +60,16 @@ EOF
 Or directly (for testing):
 ```bash
 node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "message"
+```
+
+## Admin CLI
+
+```bash
+node ~/zylos/.claude/skills/zalo/scripts/admin.js show               # Config (token masked)
+node ~/zylos/.claude/skills/zalo/scripts/admin.js set-dm-policy open  # DM policy
+node ~/zylos/.claude/skills/zalo/scripts/admin.js add-dm-allow <id>   # Allowlist add
+node ~/zylos/.claude/skills/zalo/scripts/admin.js show-owner          # Owner info
+node ~/zylos/.claude/skills/zalo/scripts/admin.js help                # All commands
 ```
 
 ## Config Location

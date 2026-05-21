@@ -1,7 +1,7 @@
 # zylos-zalo Design Document
 
-**Version**: 0.1.0
-**Date**: 2026-05-20
+**Version**: 0.1.1
+**Date**: 2026-05-21
 **Repository**: https://github.com/zylos-ai/zylos-zalo
 
 ---
@@ -24,6 +24,7 @@ zylos-zalo/
       auth.js          — Owner binding + access control
       context.js       — Chat history + message formatting
   scripts/
+    admin.js           — Admin CLI for config management
     send.js            — C4 outbound send interface
   hooks/
     configure.js       — Writes collected config to config.json
@@ -123,7 +124,22 @@ All calls are POST with JSON body. Methods used:
 - Group messages require `groupPolicy: "open"` or a configured group entry;
   configured groups may restrict senders with `allowFrom`
 
-## 6. Limitations
+## 6. Admin CLI
+
+`scripts/admin.js` provides config management without editing JSON directly:
+
+| Command | Purpose |
+|---------|---------|
+| `show` | Display config (token masked) |
+| `set-dm-policy <open\|allowlist\|owner>` | Set DM access policy |
+| `list-dm-allow` | Show DM policy and allowFrom list |
+| `add-dm-allow <user_id>` | Add user to DM allowlist |
+| `remove-dm-allow <user_id>` | Remove user from DM allowlist |
+| `set-delivery <polling\|webhook>` | Switch delivery mode |
+| `show-owner` | Show bound owner |
+| `help` | Show usage |
+
+## 7. Limitations
 
 - Outbound local image files are not hosted automatically yet; outbound images
   require a public HTTP(S) URL

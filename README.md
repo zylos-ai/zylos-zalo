@@ -120,6 +120,21 @@ The Bot Platform API wrapper does not implement quote replies. C4 endpoint
 message ids are preserved for correlation, but outbound replies are sent as
 plain messages until a verified Bot Platform quote-reply contract exists.
 
+## Admin CLI
+
+Manage configuration without editing JSON directly:
+
+```bash
+node scripts/admin.js help                        # Show all commands
+node scripts/admin.js show                        # Show config (token masked)
+node scripts/admin.js set-dm-policy allowlist      # Set DM policy
+node scripts/admin.js add-dm-allow <user_id>       # Add user to allowlist
+node scripts/admin.js set-delivery webhook         # Switch delivery mode
+node scripts/admin.js show-owner                   # Show bound owner
+```
+
+After changes, restart the service: `pm2 restart zylos-zalo`
+
 ## Service Management
 
 ```bash
