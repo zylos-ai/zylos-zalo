@@ -9,6 +9,9 @@ export function hasOwner(config) {
 }
 
 export function bindOwner(config, userId, userName) {
+  const prevOwner = config.owner;
+  const prevDmAllowFrom = config.dmAllowFrom ? [...config.dmAllowFrom] : undefined;
+
   config.owner = {
     user_id: String(userId),
     name: userName || null,
@@ -18,8 +21,16 @@ export function bindOwner(config, userId, userName) {
   if (!config.dmAllowFrom.includes(String(userId))) {
     config.dmAllowFrom.push(String(userId));
   }
-  saveConfig(config);
+
+  if (!saveConfig(config)) {
+    config.owner = prevOwner;
+    config.dmAllowFrom = prevDmAllowFrom;
+    console.error(`[zalo] Owner binding failed: config save error`);
+    return false;
+  }
+
   console.log(`[zalo] Owner bound: ${userName || userId}`);
+  return true;
 }
 
 export function isOwner(config, userId) {

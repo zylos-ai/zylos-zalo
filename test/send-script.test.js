@@ -4,8 +4,16 @@ import path from 'node:path';
 import test from 'node:test';
 import { cleanupDir, makeTempHome, repoRoot, runNode } from './helpers.js';
 
+const DATA_SUBDIR = 'zylos/components/zalo';
+
 function writeConfig(home, config) {
-  fs.writeFileSync(path.join(home, 'zylos/components/zalo/config.json'), JSON.stringify(config));
+  fs.writeFileSync(path.join(home, DATA_SUBDIR, 'config.json'), JSON.stringify(config));
+}
+
+function writeRuntimeFiles(home, { token = 'test-internal-token', port = 9 } = {}) {
+  const dir = path.join(home, DATA_SUBDIR);
+  fs.writeFileSync(path.join(dir, '.internal-token'), token, { mode: 0o600 });
+  fs.writeFileSync(path.join(dir, '.internal-endpoint.json'), JSON.stringify({ port }), { mode: 0o600 });
 }
 
 test('send script validates CLI arguments and token presence', async () => {
@@ -28,6 +36,7 @@ test('send script sends text chunks and records outgoing messages', async () => 
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');
   writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
   try {
     const result = await runNode([
       '--import',
@@ -53,6 +62,7 @@ test('send script reads message content from stdin before CLI args', async () =>
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');
   writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
   try {
     const result = await runNode([
       '--import',
@@ -77,6 +87,7 @@ test('send script accepts stdin-only message content', async () => {
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');
   writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
   try {
     const result = await runNode([
       '--import',
@@ -100,6 +111,7 @@ test('send script uses configured API base and sends stickers', async () => {
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');
   writeConfig(home, { botToken: 'token-1', apiBaseUrl: 'https://bot-api.zapps.me', internal_port: 9 });
+  writeRuntimeFiles(home);
   try {
     const result = await runNode([
       '--import',
@@ -123,6 +135,7 @@ test('send script sends public image URLs and rejects local image paths', async 
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');
   writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
   try {
     let result = await runNode([
       '--import',
@@ -141,6 +154,43 @@ test('send script sends public image URLs and rejects local image paths', async 
     result = await runNode(['scripts/send.js', 'chat-1', '[MEDIA:image]/tmp/photo.jpg'], { env: { HOME: home } });
     assert.equal(result.code, 1);
     assert.match(result.stderr, /requires a public HTTP\(S\) image URL/);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script fails with clear error when runtime files are missing', async () => {
+  const home = makeTempHome();
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  try {
+    const result = await runNode(['scripts/send.js', 'chat-1', 'hello'], { env: { HOME: home } });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /service not running or internal token unavailable/);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script uses effective port from runtime endpoint file', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  writeConfig(home, { botToken: 'token-1', internal_port: 3462 });
+  writeRuntimeFiles(home, { port: 3463 });
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1|req:req-1',
+      'test message'
+    ], {
+      env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    const recordCall = calls.find(c => c.url.includes('3463'));
+    assert.ok(recordCall, 'record-outgoing should use port 3463 from runtime file, not 3462 from config');
   } finally {
     cleanupDir(home);
   }

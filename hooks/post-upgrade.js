@@ -45,7 +45,9 @@ if (fs.existsSync(configPath)) {
 
     // Save if migrated
     if (migrated) {
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      const tmp = configPath + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n');
+      fs.renameSync(tmp, configPath);
       console.log('Config migrations applied:');
       migrations.forEach(m => console.log('  - ' + m));
     } else {

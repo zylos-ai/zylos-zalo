@@ -10,7 +10,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { loadConfig, DATA_DIR } from '../src/lib/config.js';
 import { sendMessage, sendPhoto, sendSticker, setApiBaseUrl } from '../src/lib/api.js';
 
@@ -76,7 +75,33 @@ if (!botToken) {
   process.exit(1);
 }
 
-const INTERNAL_TOKEN = crypto.createHash('sha256').update(botToken).digest('hex');
+const INTERNAL_TOKEN_PATH = path.join(DATA_DIR, '.internal-token');
+const INTERNAL_ENDPOINT_PATH = path.join(DATA_DIR, '.internal-endpoint.json');
+
+function readInternalToken() {
+  try {
+    return fs.readFileSync(INTERNAL_TOKEN_PATH, 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
+function readInternalPort() {
+  try {
+    const data = JSON.parse(fs.readFileSync(INTERNAL_ENDPOINT_PATH, 'utf8'));
+    return data.port || null;
+  } catch {
+    return null;
+  }
+}
+
+const INTERNAL_TOKEN = readInternalToken();
+const INTERNAL_PORT = readInternalPort();
+
+if (!INTERNAL_TOKEN || !INTERNAL_PORT) {
+  console.error('Error: service not running or internal token unavailable');
+  process.exit(1);
+}
 
 function splitMessage(text, maxLen) {
   if (text.length <= maxLen) return [text];
@@ -131,12 +156,11 @@ function markTypingDone() {
 }
 
 async function recordOutgoing(text) {
-  const port = config.internal_port || 3462;
   try {
     const body = JSON.stringify({ chatId, text: text.substring(0, 500) });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
-    await fetch(`http://127.0.0.1:${port}/internal/record-outgoing`, {
+    await fetch(`http://127.0.0.1:${INTERNAL_PORT}/internal/record-outgoing`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Internal-Token': INTERNAL_TOKEN },
       body,

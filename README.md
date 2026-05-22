@@ -83,7 +83,8 @@ group chat is present in `groups`:
 ```
 
 Set `allowFrom` to specific Zalo user IDs to restrict which group members may
-trigger the agent. The owner is always allowed.
+trigger the agent. The owner bypasses per-group allowlists but not
+`groupPolicy: disabled`, which is absolute.
 
 ### Webhook mode (production)
 

@@ -80,3 +80,21 @@ test('auth enforces group policy and per-group senders', async () => {
   assert.equal(config.groups.groupB.mode, 'smart');
   assert.deepEqual(config.groups.groupB.allowFrom, ['*']);
 });
+
+test('auth bindOwner rolls back in-memory state on config save failure', async () => {
+  const configDir = path.join(home, 'zylos/components/zalo');
+  fs.mkdirSync(configDir, { recursive: true });
+  const { bindOwner, hasOwner } = await freshImport('src/lib/auth.js');
+  const config = baseConfig({ owner: { user_id: null, name: null, bound_at: null }, dmAllowFrom: [] });
+
+  const configPath = path.join(configDir, 'config.json');
+  try { fs.unlinkSync(configPath); } catch {}
+  fs.mkdirSync(configPath, { recursive: true });
+
+  const result = bindOwner(config, 'user-999', 'TestUser');
+  assert.equal(result, false);
+  assert.equal(hasOwner(config), false);
+  assert.ok(!config.dmAllowFrom.includes('user-999'));
+
+  fs.rmSync(configPath, { recursive: true, force: true });
+});

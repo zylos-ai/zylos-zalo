@@ -23,6 +23,7 @@ export const DEFAULT_CONFIG = {
   webhookUrl: null,
   webhookSecret: null,
   webhookPath: '/zalo/webhook',
+  webhookPort: null,
   webhook: {
     dedupWindowMs: 5 * 60 * 1000,
     dedupMaxEntries: 1000,

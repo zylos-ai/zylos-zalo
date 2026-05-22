@@ -219,8 +219,9 @@ function authorizeMessage(info) {
       console.log(`[zalo] Ignoring group message before owner is bound: ${info.chatId}`);
       return false;
     }
-    bindOwner(config, info.senderId, info.userName);
-    sendMessage(botToken, info.chatId, 'You are now the admin of this bot.').catch(() => {});
+    if (bindOwner(config, info.senderId, info.userName)) {
+      sendMessage(botToken, info.chatId, 'You are now the admin of this bot.').catch(() => {});
+    }
     return false;
   }
 
@@ -408,11 +409,6 @@ function startWebhookServer(port, webhookPath, webhookSecret) {
       return;
     }
 
-    if (req.method === 'POST' && req.url === '/internal/record-outgoing') {
-      handleRecordOutgoing(req, res);
-      return;
-    }
-
     res.writeHead(404).end();
   });
 
@@ -422,7 +418,8 @@ function startWebhookServer(port, webhookPath, webhookSecret) {
 }
 
 async function runWebhook() {
-  const port = config.internal_port || 3462;
+  const internalPort = config.internal_port || 3462;
+  const publicPort = config.webhookPort || internalPort;
   const webhookPath = config.webhookPath || '/zalo/webhook';
   const webhookSecret = config.webhookSecret || null;
   const webhookUrl = config.webhookUrl;
@@ -437,7 +434,14 @@ async function runWebhook() {
     process.exit(1);
   }
 
-  startWebhookServer(port, webhookPath, webhookSecret);
+  let effectiveInternalPort = internalPort;
+  if (publicPort === internalPort) {
+    effectiveInternalPort = internalPort + 1;
+    console.warn(`[zalo] webhookPort and internal_port are both ${internalPort}; internal server auto-shifted to ${effectiveInternalPort}. Set webhookPort explicitly to avoid this.`);
+  }
+
+  startWebhookServer(publicPort, webhookPath, webhookSecret);
+  startInternalServer(effectiveInternalPort);
 
   try {
     await setWebhook(botToken, webhookUrl, webhookSecret);
@@ -452,7 +456,9 @@ async function runWebhook() {
 // Internal HTTP for recording outgoing
 // ============================================================
 
-const INTERNAL_TOKEN = crypto.createHash('sha256').update(botToken).digest('hex');
+const INTERNAL_TOKEN = crypto.randomBytes(32).toString('hex');
+const INTERNAL_TOKEN_PATH = path.join(DATA_DIR, '.internal-token');
+const INTERNAL_ENDPOINT_PATH = path.join(DATA_DIR, '.internal-endpoint.json');
 
 function handleRecordOutgoing(req, res) {
   const token = req.headers['x-internal-token'];
@@ -489,10 +495,18 @@ function handleRecordOutgoing(req, res) {
 
 let internalServer = null;
 
-function startInternalServer() {
-  if (config.delivery === 'webhook') return;
+function writeInternalRuntimeFiles(port) {
+  fs.writeFileSync(INTERNAL_TOKEN_PATH, INTERNAL_TOKEN, { mode: 0o600 });
+  fs.writeFileSync(INTERNAL_ENDPOINT_PATH, JSON.stringify({ port }), { mode: 0o600 });
+}
 
-  const port = config.internal_port || 3462;
+function cleanupInternalRuntimeFiles() {
+  try { fs.unlinkSync(INTERNAL_TOKEN_PATH); } catch {}
+  try { fs.unlinkSync(INTERNAL_ENDPOINT_PATH); } catch {}
+}
+
+function startInternalServer(portOverride) {
+  const port = portOverride || config.internal_port || 3462;
   internalServer = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/internal/record-outgoing') {
       handleRecordOutgoing(req, res);
@@ -509,6 +523,7 @@ function startInternalServer() {
   });
 
   internalServer.listen(port, '127.0.0.1', () => {
+    writeInternalRuntimeFiles(port);
     console.log(`[zalo] Internal server on 127.0.0.1:${port}`);
   });
 }
@@ -560,6 +575,7 @@ function shutdown() {
 
   if (webhookServer) webhookServer.close();
   if (internalServer) internalServer.close();
+  cleanupInternalRuntimeFiles();
 
   setTimeout(() => process.exit(0), 1000);
 }

@@ -88,7 +88,8 @@ Set `apiBaseUrl` only when a deployment needs a non-default Zalo Bot API host.
 
 Groups are accepted when `groupPolicy` is `open` or the group id appears under
 `groups`. Per-group `allowFrom` may contain `*` or specific sender ids; the
-owner is always allowed.
+owner bypasses per-group allowlists but not `groupPolicy: disabled`, which is
+absolute.
 
 ```json
 {
