@@ -92,9 +92,14 @@ trigger the agent. The owner bypasses per-group allowlists but not
 {
   "delivery": "webhook",
   "webhookUrl": "https://your-domain.com/zalo/webhook",
-  "webhookSecret": "your-secret"
+  "webhookSecret": "your-secret",
+  "webhookPort": 8443
 }
 ```
+
+Set `webhookPort` to control the public webhook listener port separately from
+`internal_port` (the localhost internal API). If omitted, falls back to
+`internal_port` with automatic shift for the internal server.
 
 ## Usage
 

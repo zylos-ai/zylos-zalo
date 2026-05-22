@@ -87,7 +87,8 @@ Located at `~/zylos/components/zalo/config.json`:
     "maxLength": 2000,
     "mediaMaxMb": 10
   },
-  "internal_port": 3462
+  "internal_port": 3462,
+  "webhookPort": null
 }
 ```
 
@@ -119,8 +120,16 @@ All calls are POST with JSON body. Methods used:
   `X-Bot-Api-Secret-Token` header with timing-safe comparison
 - Webhook mode applies fixed-window request rate limiting and 5-minute replay
   deduplication by event/chat/message id
-- Internal HTTP server (record-outgoing) uses SHA-256 token derived from bot token
-- Internal server binds to 127.0.0.1 only (polling mode) or validates token (webhook mode)
+- Internal HTTP server (record-outgoing) uses a random token generated at
+  each service startup, stored in `.internal-token` (mode `0600`) under the
+  component data directory. The effective internal port is stored alongside
+  it in `.internal-endpoint.json` (mode `0600`). Both files are cleaned up
+  on shutdown.
+- Internal server binds to `127.0.0.1` in both polling and webhook modes.
+  The public webhook server has no `/internal/*` routes.
+- `webhookPort` controls the public webhook listener; `internal_port`
+  controls the localhost internal API. If both resolve to the same port,
+  the internal server auto-shifts to `internal_port + 1`.
 - Group messages require `groupPolicy: "open"` or a configured group entry;
   configured groups may restrict senders with `allowFrom`
 
