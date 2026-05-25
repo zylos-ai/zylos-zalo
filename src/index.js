@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, DATA_DIR, repairConfigPermissions } from './lib/config.js';
 import {
   hasOwner, bindOwner, isDmAllowed,
-  isGroupAllowed, isGroupSenderAllowed, getGroupName, getGroupMode
+  isGroupAllowed, isGroupSenderAllowed, getGroupName
 } from './lib/auth.js';
 import {
   logAndRecord, ensureReplay, getHistory, formatMessage
@@ -219,58 +219,44 @@ function getMessageInfo(update) {
   return { message, sender, chat, isGroup, chatId, senderId, userName, groupName, messageId };
 }
 
-function isBotMentioned(text) {
-  if (!text || !botInfo) return false;
-  const lower = text.toLowerCase();
-  if (botInfo.name && lower.includes(`@${botInfo.name.toLowerCase()}`)) return true;
-  if (botInfo.display_name && lower.includes(`@${botInfo.display_name.toLowerCase()}`)) return true;
-  if (botInfo.id && lower.includes(`@${botInfo.id}`)) return true;
-  return false;
-}
-
-function authorizeMessage(info, text) {
-  if (!info.chatId || !info.senderId) return { allowed: false };
+function authorizeMessage(info) {
+  if (!info.chatId || !info.senderId) return false;
 
   if (!hasOwner(config)) {
     if (info.isGroup) {
       console.log(`[zalo] Ignoring group message before owner is bound: ${info.chatId}`);
-      return { allowed: false };
+      return false;
     }
     if (bindOwner(config, info.senderId, info.userName)) {
       sendMessage(botToken, info.chatId, 'You are now the admin of this bot.').catch(() => {});
     }
-    return { allowed: false };
+    return false;
   }
 
   if (info.isGroup) {
     if (!isGroupAllowed(config, info.chatId)) {
       console.log(`[zalo] Group ${info.chatId} not allowed, ignoring`);
-      return { allowed: false };
+      return false;
     }
     if (!isGroupSenderAllowed(config, info.chatId, info.senderId)) {
       console.log(`[zalo] Sender ${info.senderId} not allowed in group ${info.chatId}, ignoring`);
-      return { allowed: false };
+      return false;
     }
-    const mode = getGroupMode(config, info.chatId);
-    const mentioned = isBotMentioned(text);
-    if (mode === 'mention' && !mentioned) {
-      return { allowed: false };
-    }
-    return { allowed: true, mode, mentioned };
+    return true;
   }
 
   if (!isDmAllowed(config, info.senderId)) {
     sendMessage(botToken, info.chatId, "Sorry, I'm not available. Please ask my admin for access.").catch(() => {});
-    return { allowed: false };
+    return false;
   }
 
-  return { allowed: true };
+  return true;
 }
 
-function buildC4Message({ info, text, mediaPath, smartMode }) {
+function buildC4Message({ info, text, mediaPath }) {
   ensureReplay(info.chatId, config);
   const contextMessages = info.isGroup ? getHistory(info.chatId, info.messageId, config) : null;
-  let msg = formatMessage({
+  return formatMessage({
     chatType: info.isGroup ? 'group' : 'dm',
     groupName: info.groupName,
     userName: info.userName,
@@ -278,13 +264,9 @@ function buildC4Message({ info, text, mediaPath, smartMode }) {
     contextMessages,
     mediaPath
   });
-  if (smartMode) {
-    msg += '\n<smart-mode>This message was forwarded because the group is in smart mode. Only respond if the message is relevant to you or asks a question you can help with.</smart-mode>';
-  }
-  return msg;
 }
 
-function processAuthorizedMessage({ info, text, mediaPath, smartMode }) {
+function processAuthorizedMessage({ info, text, mediaPath }) {
   logAndRecord(info.chatId, {
     timestamp: new Date().toISOString(),
     message_id: info.messageId,
@@ -295,7 +277,7 @@ function processAuthorizedMessage({ info, text, mediaPath, smartMode }) {
 
   const endpoint = buildEndpoint(info.chatId, { messageId: info.messageId });
   const correlationId = safeId(`${info.chatId}:${info.messageId}`);
-  if (!smartMode) startTyping(info.chatId, correlationId);
+  startTyping(info.chatId, correlationId);
 
   const msg = buildC4Message({ info, text, mediaPath, smartMode });
   sendToC4('zalo', endpoint, msg, {
@@ -317,10 +299,8 @@ function handleTextMessage(update) {
   const text = info.message.text || '';
 
   if (!info.chatId || !text) return;
-  const auth = authorizeMessage(info, text);
-  if (!auth.allowed) return;
-  const smartMode = info.isGroup && auth.mode === 'smart' && !auth.mentioned;
-  processAuthorizedMessage({ info, text, mediaPath: null, smartMode });
+  if (!authorizeMessage(info)) return;
+  processAuthorizedMessage({ info, text, mediaPath: null });
 }
 
 async function handleImageMessage(update) {
@@ -331,13 +311,11 @@ async function handleImageMessage(update) {
   const caption = info.message.caption || '';
 
   if (!info.chatId) return;
-  const auth = authorizeMessage(info, caption);
-  if (!auth.allowed) return;
-  const smartMode = info.isGroup && auth.mode === 'smart' && !auth.mentioned;
+  if (!authorizeMessage(info)) return;
 
   let mediaPath = null;
   let text = caption || '[sent an image]';
-  if (imageUrl && !smartMode) {
+  if (imageUrl) {
     try {
       const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
       const saved = await downloadImage(imageUrl, { messageId: info.messageId, maxBytes });
@@ -347,11 +325,9 @@ async function handleImageMessage(update) {
       console.error(`[zalo] Failed to download image ${info.messageId}: ${err.message}`);
       text = caption || `[sent an image, download failed] ${imageUrl}`;
     }
-  } else if (imageUrl && smartMode) {
-    text = caption || `[image, url: ${imageUrl}]`;
   }
 
-  processAuthorizedMessage({ info, text, mediaPath, smartMode });
+  processAuthorizedMessage({ info, text, mediaPath });
 }
 
 function handleStickerMessage(update) {
@@ -359,14 +335,11 @@ function handleStickerMessage(update) {
 
   const info = getMessageInfo(update);
   if (!info.chatId) return;
-  const stickerText = '';
-  const auth = authorizeMessage(info, stickerText);
-  if (!auth.allowed) return;
-  const smartMode = info.isGroup && auth.mode === 'smart' && !auth.mentioned;
+  if (!authorizeMessage(info)) return;
 
   const stickerId = info.message.sticker_id || info.message.stickerId || info.message.id || '';
   const text = stickerId ? `[sent a sticker: ${stickerId}]` : '[sent a sticker]';
-  processAuthorizedMessage({ info, text, mediaPath: null, smartMode });
+  processAuthorizedMessage({ info, text, mediaPath: null });
 }
 
 // ============================================================

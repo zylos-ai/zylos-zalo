@@ -75,25 +75,9 @@ test('auth enforces group policy and per-group senders', async () => {
   assert.equal(getGroupName(config, 'groupA', 'fallback'), 'Group A');
   assert.equal(getGroupName(config, 'missing', 'fallback'), 'fallback');
 
-  assert.equal(addGroup(config, 'groupB', 'Group B', 'smart'), true);
-  assert.equal(addGroup(config, 'groupB', 'Group B', 'smart'), false);
-  assert.equal(config.groups.groupB.mode, 'smart');
+  assert.equal(addGroup(config, 'groupB', 'Group B'), true);
+  assert.equal(addGroup(config, 'groupB', 'Group B'), false);
   assert.deepEqual(config.groups.groupB.allowFrom, ['*']);
-});
-
-test('auth getGroupMode returns configured mode or defaults to mention', async () => {
-  const { getGroupMode } = await freshImport('src/lib/auth.js');
-  const config = baseConfig({
-    groups: {
-      groupA: { name: 'A', mode: 'mention', allowFrom: ['*'] },
-      groupB: { name: 'B', mode: 'smart', allowFrom: ['*'] },
-      groupC: { name: 'C', allowFrom: ['*'] }
-    }
-  });
-  assert.equal(getGroupMode(config, 'groupA'), 'mention');
-  assert.equal(getGroupMode(config, 'groupB'), 'smart');
-  assert.equal(getGroupMode(config, 'groupC'), 'mention');
-  assert.equal(getGroupMode(config, 'missing'), 'mention');
 });
 
 test('auth bindOwner rolls back in-memory state on config save failure', async () => {

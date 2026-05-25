@@ -10,14 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.2] - 2026-05-25
 
 ### Added
-- Group mention/smart mode enforcement: `mention` mode (default) only forwards messages that @mention the bot; `smart` mode forwards all with agent discretion hint.
 - `logging.maxLogBytes` and `retention.mediaMaxAgeDays` in DEFAULT_CONFIG with documented defaults (512 KB, 7 days).
 - Managed webhook route metadata (`type: reverse_proxy`) for Caddy integration.
 - Default `webhookPort: 3464` separating public webhook listener from internal API.
 
 ### Changed
-- `authorizeMessage()` now enforces group mode semantics instead of forwarding all allowed group messages unconditionally.
-- Smart mode skips typing indicators and defers media downloads (sends metadata only).
+- Removed stale group `mode` field from docs, config examples, and `addGroup()` — the Zalo Bot Platform does not expose group-mode capabilities.
 - `next-steps` frontmatter cleared of roadmap items.
 
 ### Fixed

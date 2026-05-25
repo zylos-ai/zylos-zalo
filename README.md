@@ -74,7 +74,6 @@ group chat is present in `groups`:
   "groups": {
     "123456789": {
       "name": "Team Chat",
-      "mode": "mention",
       "allowFrom": ["*"],
       "historyLimit": 5
     }

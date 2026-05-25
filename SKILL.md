@@ -103,7 +103,6 @@ absolute.
   "groups": {
     "123456789": {
       "name": "Team Chat",
-      "mode": "mention",
       "allowFrom": ["*"],
       "historyLimit": 5
     }
@@ -114,10 +113,6 @@ absolute.
 Webhook mode verifies the secret with timing-safe comparison, rate-limits
 requests, and ignores duplicate event/chat/message ids during the configured
 dedup window. `webhookSecret` is required in webhook mode.
-
-Group `mode` controls message forwarding: `mention` (default) only forwards
-messages that @mention the bot; `smart` forwards all messages with an agent
-discretion hint. Mode is set per-group in config.
 
 Inbound Zalo image events are downloaded to `media/` and forwarded to C4 as file
 attachments. The default max image size is 10 MB and can be adjusted with

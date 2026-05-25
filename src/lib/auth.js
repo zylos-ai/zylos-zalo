@@ -67,23 +67,17 @@ export function getGroupName(config, chatId, fallback) {
   return gc?.name || fallback || 'group';
 }
 
-export function getGroupMode(config, chatId) {
-  const gc = config.groups?.[String(chatId)];
-  return gc?.mode || 'mention';
-}
-
-export function addGroup(config, chatId, name, mode = 'mention') {
+export function addGroup(config, chatId, name) {
   chatId = String(chatId);
   if (!config.groups) config.groups = {};
   if (config.groups[chatId]) return false;
   config.groups[chatId] = {
     name,
-    mode,
     allowFrom: ['*'],
     historyLimit: config.message?.context_messages || 5,
     added_at: new Date().toISOString()
   };
   saveConfig(config);
-  console.log(`[zalo] Group added: ${name} (${chatId}) mode=${mode}`);
+  console.log(`[zalo] Group added: ${name} (${chatId})`);
   return true;
 }
