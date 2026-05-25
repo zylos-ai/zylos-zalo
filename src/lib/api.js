@@ -17,6 +17,10 @@ export function setApiBaseUrl(baseUrl) {
     return;
   }
   const parsed = new URL(baseUrl);
+  const isLoopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]';
+  if (parsed.protocol === 'http:' && !isLoopback) {
+    throw new ZaloApiError('Zalo API base URL must use HTTPS for non-loopback targets', 0, null);
+  }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
     throw new ZaloApiError('Zalo API base URL must use HTTP or HTTPS', 0, null);
   }

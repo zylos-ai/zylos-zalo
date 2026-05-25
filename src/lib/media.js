@@ -3,6 +3,7 @@
  */
 
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import dns from 'node:dns/promises';
 import { DATA_DIR } from './config.js';
@@ -38,12 +39,37 @@ const ZALO_CDN_PATTERNS = [
   /\.zaloapp\.com$/i,
 ];
 
-function isPrivateIP(ip) {
-  if (ip === '127.0.0.1' || ip === '::1' || ip === '0.0.0.0' || ip === '::') return true;
+function extractMappedIPv4(ip) {
+  const dotted = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (dotted) return dotted[1];
+  const hex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (hex) {
+    const hi = parseInt(hex[1], 16), lo = parseInt(hex[2], 16);
+    return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+  }
+  return null;
+}
+
+function isPrivateIP(raw) {
+  const stripped = String(raw).replace(/^\[|\]$/g, '');
+
+  const mapped = extractMappedIPv4(stripped);
+  if (mapped) return isPrivateIPv4(mapped);
+
+  if (net.isIPv4(stripped)) return isPrivateIPv4(stripped);
+
+  if (stripped === '::1' || stripped === '::' || stripped === '0:0:0:0:0:0:0:1' || stripped === '0000:0000:0000:0000:0000:0000:0000:0001') return true;
+  if (stripped.startsWith('fe80:') || stripped.startsWith('fc') || stripped.startsWith('fd')) return true;
+
+  return false;
+}
+
+function isPrivateIPv4(ip) {
+  if (ip === '127.0.0.1' || ip === '0.0.0.0') return true;
+  if (ip.startsWith('127.')) return true;
   if (ip.startsWith('10.') || ip.startsWith('192.168.')) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
-  if (ip.startsWith('169.254.')) return true;
-  if (ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) return true;
+  if (ip.startsWith('169.254.') || ip.startsWith('0.')) return true;
   return false;
 }
 
@@ -63,8 +89,14 @@ export async function validateDownloadUrl(url) {
   return true;
 }
 
-export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYTES } = {}) {
+const MAX_REDIRECTS = 5;
+
+export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYTES, _redirectCount = 0 } = {}) {
   if (!url) return null;
+  if (_redirectCount > MAX_REDIRECTS) {
+    console.warn(`[zalo] Download blocked: too many redirects for ${messageId}`);
+    return null;
+  }
 
   if (!await validateDownloadUrl(url)) {
     console.warn(`[zalo] Download blocked: ${url} (non-HTTPS or private destination)`);
@@ -79,11 +111,16 @@ export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYT
     const response = await fetch(url, { signal: controller.signal, redirect: 'manual' });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
-      if (location && !await validateDownloadUrl(location)) {
-        console.warn(`[zalo] Download redirect blocked: ${location}`);
+      if (!location) {
+        console.warn(`[zalo] Download redirect missing Location header`);
         return null;
       }
-      return downloadImage(location, { messageId, maxBytes });
+      const resolved = new URL(location, url).href;
+      if (!await validateDownloadUrl(resolved)) {
+        console.warn(`[zalo] Download redirect blocked: ${resolved}`);
+        return null;
+      }
+      return downloadImage(resolved, { messageId, maxBytes, _redirectCount: _redirectCount + 1 });
     }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -114,4 +151,27 @@ export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYT
   } finally {
     clearTimeout(timer);
   }
+}
+
+const DEFAULT_MEDIA_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function cleanupOldMedia(maxAgeMs = DEFAULT_MEDIA_MAX_AGE_MS) {
+  if (!fs.existsSync(MEDIA_DIR)) return 0;
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+  try {
+    for (const file of fs.readdirSync(MEDIA_DIR)) {
+      if (file.endsWith('.tmp')) continue;
+      const filePath = path.join(MEDIA_DIR, file);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.mtimeMs < cutoff) {
+          fs.unlinkSync(filePath);
+          removed++;
+        }
+      } catch {}
+    }
+  } catch {}
+  if (removed > 0) console.log(`[zalo] Media cleanup: removed ${removed} files older than ${Math.round(maxAgeMs / 86400000)}d`);
+  return removed;
 }

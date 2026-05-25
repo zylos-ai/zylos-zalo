@@ -57,15 +57,35 @@ export function recordEntry(chatId, entry, config) {
   }
 }
 
+const DEFAULT_MAX_LOG_BYTES = 512 * 1024;
+
 export function logAndRecord(chatId, entry, config) {
   chatId = String(chatId);
   const logFile = path.join(LOGS_DIR, logFileName(chatId));
   try {
     fs.appendFileSync(logFile, JSON.stringify(entry) + '\n');
+    const maxBytes = config?.logging?.maxLogBytes || DEFAULT_MAX_LOG_BYTES;
+    try {
+      const stat = fs.statSync(logFile);
+      if (stat.size > maxBytes) rotateLog(logFile, maxBytes);
+    } catch {}
   } catch (err) {
     console.error(`[zalo] Log write failed for ${chatId}: ${err.message}`);
   }
   recordEntry(chatId, entry, config);
+}
+
+function rotateLog(logFile, maxBytes) {
+  const keepBytes = Math.floor(maxBytes * 0.75);
+  const buf = Buffer.alloc(keepBytes);
+  const fd = fs.openSync(logFile, 'r');
+  const stat = fs.fstatSync(fd);
+  fs.readSync(fd, buf, 0, keepBytes, stat.size - keepBytes);
+  fs.closeSync(fd);
+  const content = buf.toString('utf8');
+  const firstNewline = content.indexOf('\n');
+  const trimmed = firstNewline >= 0 ? content.slice(firstNewline + 1) : content;
+  fs.writeFileSync(logFile, trimmed);
 }
 
 function readTailLines(filePath, count) {

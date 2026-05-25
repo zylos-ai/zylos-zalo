@@ -20,7 +20,7 @@ import {
 import {
   logAndRecord, ensureReplay, getHistory, formatMessage
 } from './lib/context.js';
-import { downloadImage } from './lib/media.js';
+import { downloadImage, cleanupOldMedia } from './lib/media.js';
 import {
   getMe, getUpdates, sendMessage, sendChatAction,
   setWebhook, deleteWebhook, ZaloApiError, setApiBaseUrl
@@ -63,7 +63,7 @@ function parseC4Response(stdout) {
   try { return JSON.parse(stdout.trim()); } catch { return null; }
 }
 
-function sendToC4(source, endpoint, content, onReject) {
+function sendToC4(source, endpoint, content, { onReject, onFail } = {}) {
   if (!content) return;
   const args = [
     C4_RECEIVE,
@@ -91,7 +91,10 @@ function sendToC4(source, endpoint, content, onReject) {
         const retryResponse = parseC4Response(retryStdout);
         if (retryResponse?.ok === false && retryResponse.error?.message && onReject) {
           onReject(retryResponse.error.message);
+          return;
         }
+        console.error(`[zalo] C4 delivery failed after retry: ${retryError.message}`);
+        if (onFail) onFail();
       });
     }, 2000);
   });
@@ -277,9 +280,15 @@ function processAuthorizedMessage({ info, text, mediaPath }) {
   startTyping(info.chatId, correlationId);
 
   const msg = buildC4Message({ info, text, mediaPath });
-  sendToC4('zalo', endpoint, msg, (errMsg) => {
-    stopTyping(correlationId);
-    sendMessage(botToken, info.chatId, errMsg).catch(() => {});
+  sendToC4('zalo', endpoint, msg, {
+    onReject: (errMsg) => {
+      stopTyping(correlationId);
+      sendMessage(botToken, info.chatId, errMsg).catch(() => {});
+    },
+    onFail: () => {
+      stopTyping(correlationId);
+      sendMessage(botToken, info.chatId, 'Sorry, I could not process your message right now. Please try again.').catch(() => {});
+    }
   });
 }
 
@@ -513,6 +522,9 @@ function cleanupInternalRuntimeFiles() {
 
 function startInternalServer(portOverride) {
   const port = portOverride || config.internal_port || 3462;
+  const MAX_PORT_RETRIES = 5;
+  let portRetries = 0;
+
   internalServer = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/internal/record-outgoing') {
       handleRecordOutgoing(req, res);
@@ -523,7 +535,12 @@ function startInternalServer(portOverride) {
 
   internalServer.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`[zalo] Port ${port} in use, retrying in 3s`);
+      portRetries++;
+      if (portRetries >= MAX_PORT_RETRIES) {
+        console.error(`[zalo] Port ${port} in use after ${MAX_PORT_RETRIES} retries, exiting`);
+        process.exit(1);
+      }
+      console.error(`[zalo] Port ${port} in use, retry ${portRetries}/${MAX_PORT_RETRIES} in 3s`);
       setTimeout(() => internalServer.listen(port, '127.0.0.1'), 3000);
     }
   });
@@ -541,6 +558,10 @@ function startInternalServer(portOverride) {
 async function main() {
   console.log(`[zalo] Starting zylos-zalo v${process.env.npm_package_version || '0.1.1'}...`);
   console.log(`[zalo] Data directory: ${DATA_DIR}`);
+
+  const mediaMaxAgeMs = (config.retention?.mediaMaxAgeDays || 7) * 24 * 60 * 60 * 1000;
+  cleanupOldMedia(mediaMaxAgeMs);
+  setInterval(() => cleanupOldMedia(mediaMaxAgeMs), 6 * 60 * 60 * 1000);
 
   if (!config.enabled) {
     console.log('[zalo] Component disabled in config, exiting.');

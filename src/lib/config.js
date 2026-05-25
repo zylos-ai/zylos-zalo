@@ -75,6 +75,8 @@ function deepMerge(defaults, overrides) {
   return result;
 }
 
+let lastGoodConfig = null;
+
 export function loadConfig() {
   loadDotEnv();
   try {
@@ -84,13 +86,22 @@ export function loadConfig() {
       if (!config.botToken && process.env.ZALO_BOT_TOKEN) {
         config.botToken = process.env.ZALO_BOT_TOKEN;
       }
+      lastGoodConfig = config;
       return config;
     }
-    console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
-    return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
+    if (!lastGoodConfig) {
+      console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
+      return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
+    }
+    console.warn(`[zalo] Config file not found, retaining last-known-good config`);
+    return lastGoodConfig;
   } catch (err) {
-    console.error(`[zalo] Failed to load config: ${err.message}`);
-    return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
+    if (!lastGoodConfig) {
+      console.error(`[zalo] Failed to load config: ${err.message}`);
+      return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
+    }
+    console.error(`[zalo] Config reload failed, retaining last-known-good config: ${err.message}`);
+    return lastGoodConfig;
   }
 }
 
