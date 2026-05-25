@@ -77,14 +77,23 @@ function deepMerge(defaults, overrides) {
 
 let lastGoodConfig = null;
 
-function hasPriorOperationEvidence() {
+const OWNER_MARKER_PATH = path.join(DATA_DIR, '.owner-bound');
+
+function hasPriorOwnership() {
+  if (fs.existsSync(OWNER_MARKER_PATH)) return true;
+  if (fs.existsSync(CONFIG_PATH + '.backup')) return true;
+  if (fs.existsSync(CONFIG_PATH + '.bak')) return true;
   const logsDir = path.join(DATA_DIR, 'logs');
   try {
     if (fs.existsSync(logsDir) && fs.readdirSync(logsDir).length > 0) return true;
   } catch {}
-  const backupPath = CONFIG_PATH + '.bak';
-  if (fs.existsSync(backupPath)) return true;
   return false;
+}
+
+export function writeOwnerMarker() {
+  try {
+    fs.writeFileSync(OWNER_MARKER_PATH, new Date().toISOString(), { mode: 0o600 });
+  } catch {}
 }
 
 export function loadConfig() {
@@ -96,6 +105,9 @@ export function loadConfig() {
       if (!config.botToken && process.env.ZALO_BOT_TOKEN) {
         config.botToken = process.env.ZALO_BOT_TOKEN;
       }
+      if (config.owner?.user_id && !fs.existsSync(OWNER_MARKER_PATH)) {
+        writeOwnerMarker();
+      }
       lastGoodConfig = config;
       return config;
     }
@@ -103,8 +115,8 @@ export function loadConfig() {
       console.warn(`[zalo] Config file not found, retaining last-known-good config`);
       return lastGoodConfig;
     }
-    if (hasPriorOperationEvidence()) {
-      console.error(`[zalo] Config file missing but prior operation detected — refusing to start with defaults. Restore config.json or its backup.`);
+    if (hasPriorOwnership()) {
+      console.error(`[zalo] Config file missing but prior ownership detected — refusing to start with defaults. Restore config.json or its backup.`);
       process.exit(1);
     }
     console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
@@ -114,8 +126,12 @@ export function loadConfig() {
       console.error(`[zalo] Config reload failed, retaining last-known-good config: ${err.message}`);
       return lastGoodConfig;
     }
-    if (hasPriorOperationEvidence()) {
-      console.error(`[zalo] Config unreadable and prior operation detected — refusing to start. Fix config.json: ${err.message}`);
+    if (fs.existsSync(CONFIG_PATH)) {
+      console.error(`[zalo] Config file exists but is unreadable/malformed — refusing to start. Fix config.json: ${err.message}`);
+      process.exit(1);
+    }
+    if (hasPriorOwnership()) {
+      console.error(`[zalo] Config missing and prior ownership detected — refusing to start. Restore config.json: ${err.message}`);
       process.exit(1);
     }
     console.error(`[zalo] Failed to load config: ${err.message}`);

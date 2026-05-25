@@ -2,7 +2,7 @@
  * Authentication and access control for zylos-zalo
  */
 
-import { saveConfig } from './config.js';
+import { saveConfig, writeOwnerMarker } from './config.js';
 
 export function hasOwner(config) {
   return config.owner && config.owner.user_id !== null;
@@ -29,6 +29,7 @@ export function bindOwner(config, userId, userName) {
     return false;
   }
 
+  writeOwnerMarker();
   console.log(`[zalo] Owner bound: ${userName || userId}`);
   return true;
 }

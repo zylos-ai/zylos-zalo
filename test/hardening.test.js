@@ -153,39 +153,55 @@ test('loadConfig retains last-known-good config when file becomes unreadable', a
   });
 });
 
-test('loadConfig exits on cold start with missing config when prior operation evidence exists', async () => {
+test('loadConfig exits on cold start with missing config when .owner-bound marker exists', async () => {
   await withTempHome(async (home) => {
     const dataDir = path.join(home, 'zylos/components/zalo');
-    const logsDir = path.join(dataDir, 'logs');
-    fs.mkdirSync(logsDir, { recursive: true });
-    fs.writeFileSync(path.join(logsDir, 'chat123.jsonl'), '{"text":"hi"}\n');
-    // No config.json — simulates config loss after prior operation
+    fs.writeFileSync(path.join(dataDir, '.owner-bound'), '2026-01-01', { mode: 0o600 });
 
-    const { runNode } = await import('./helpers.js');
     const result = await runNode(
       ['-e', 'import("./src/lib/config.js").then(m => { m.loadConfig(); console.log("LOADED"); })'],
       { env: { HOME: home, ZALO_BOT_TOKEN: 'env-token' } }
     );
-    assert.notEqual(result.stdout.trim(), 'LOADED', 'should not load defaults when prior operation detected');
-    assert.ok(result.code !== 0 || result.stderr.includes('prior operation'), 'should exit or warn about prior operation');
+    assert.notEqual(result.stdout.trim(), 'LOADED', 'should not load defaults when owner marker exists');
+    assert.ok(result.code !== 0, 'should exit on missing config with prior ownership');
   });
 });
 
-test('loadConfig exits on cold start with malformed config when prior operation evidence exists', async () => {
+test('loadConfig exits on cold start with missing config when config.json.backup exists', async () => {
   await withTempHome(async (home) => {
     const dataDir = path.join(home, 'zylos/components/zalo');
-    const logsDir = path.join(dataDir, 'logs');
-    fs.mkdirSync(logsDir, { recursive: true });
-    fs.writeFileSync(path.join(logsDir, 'chat123.jsonl'), '{"text":"hi"}\n');
-    fs.writeFileSync(path.join(dataDir, 'config.json'), 'CORRUPT{{{', { mode: 0o600 });
+    fs.writeFileSync(path.join(dataDir, 'config.json.backup'), '{"owner":{"user_id":"123"}}', { mode: 0o600 });
 
-    const { runNode } = await import('./helpers.js');
     const result = await runNode(
       ['-e', 'import("./src/lib/config.js").then(m => { m.loadConfig(); console.log("LOADED"); })'],
       { env: { HOME: home, ZALO_BOT_TOKEN: 'env-token' } }
     );
-    assert.notEqual(result.stdout.trim(), 'LOADED', 'should not load defaults when prior operation detected');
-    assert.ok(result.code !== 0 || result.stderr.includes('prior operation'), 'should exit or warn about prior operation');
+    assert.notEqual(result.stdout.trim(), 'LOADED', 'should not load defaults when backup exists');
+    assert.ok(result.code !== 0, 'should exit on missing config with backup present');
+  });
+});
+
+test('loadConfig exits on cold start with malformed config (always fails closed)', async () => {
+  await withTempHome(async (home) => {
+    const dataDir = path.join(home, 'zylos/components/zalo');
+    fs.writeFileSync(path.join(dataDir, 'config.json'), 'CORRUPT{{{', { mode: 0o600 });
+
+    const result = await runNode(
+      ['-e', 'import("./src/lib/config.js").then(m => { m.loadConfig(); console.log("LOADED"); })'],
+      { env: { HOME: home, ZALO_BOT_TOKEN: 'env-token' } }
+    );
+    assert.notEqual(result.stdout.trim(), 'LOADED', 'should not load defaults from malformed config');
+    assert.ok(result.code !== 0, 'should exit on malformed existing config');
+  });
+});
+
+test('loadConfig allows genuine first-run with no config and no prior ownership', async () => {
+  await withTempHome(async (home) => {
+    const result = await runNode(
+      ['-e', 'import("./src/lib/config.js").then(m => { const c = m.loadConfig(); console.log(c.owner?.user_id === null ? "FIRST_RUN" : "ERROR"); })'],
+      { env: { HOME: home, ZALO_BOT_TOKEN: 'env-token' } }
+    );
+    assert.ok(result.stdout.includes('FIRST_RUN'), 'genuine first-run should return defaults');
   });
 });
 
