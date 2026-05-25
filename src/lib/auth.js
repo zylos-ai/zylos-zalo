@@ -67,6 +67,11 @@ export function getGroupName(config, chatId, fallback) {
   return gc?.name || fallback || 'group';
 }
 
+export function getGroupMode(config, chatId) {
+  const gc = config.groups?.[String(chatId)];
+  return gc?.mode || 'mention';
+}
+
 export function addGroup(config, chatId, name, mode = 'mention') {
   chatId = String(chatId);
   if (!config.groups) config.groups = {};

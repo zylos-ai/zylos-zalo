@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-25
+
+### Added
+- Group mention/smart mode enforcement: `mention` mode (default) only forwards messages that @mention the bot; `smart` mode forwards all with agent discretion hint.
+- `logging.maxLogBytes` and `retention.mediaMaxAgeDays` in DEFAULT_CONFIG with documented defaults (512 KB, 7 days).
+- Managed webhook route metadata (`type: reverse_proxy`) for Caddy integration.
+- Default `webhookPort: 3464` separating public webhook listener from internal API.
+
+### Changed
+- `authorizeMessage()` now enforces group mode semantics instead of forwarding all allowed group messages unconditionally.
+- Smart mode skips typing indicators and defers media downloads (sends metadata only).
+- `next-steps` frontmatter cleared of roadmap items.
+
+### Fixed
+- Managed webhook route declaration missing `type: reverse_proxy`, causing `zylos add` to generate no usable Caddy route.
+- Webhook route target pointed to internal API port instead of webhook listener port.
+
+### Security
+- Durable owner marker (`.owner-bound`) written on owner binding; fail-closed on missing/malformed config with prior ownership evidence.
+- CDN-only media download policy: only known Zalo CDN hosts allowed, eliminating DNS rebinding SSRF.
+- HTTPS enforcement for custom API base URLs (loopback exempted).
+- IPv6 SSRF coverage: full fe80::/10 link-local range, IPv4-mapped IPv6, bracket handling.
+- Bounded redirect hops (5), bounded port retry (5 attempts), bounded log/media retention.
+- C4 delivery failure notification to user instead of silent message loss.
+
 ## [0.1.1] - 2026-05-21
 
 ### Added

@@ -81,6 +81,21 @@ test('auth enforces group policy and per-group senders', async () => {
   assert.deepEqual(config.groups.groupB.allowFrom, ['*']);
 });
 
+test('auth getGroupMode returns configured mode or defaults to mention', async () => {
+  const { getGroupMode } = await freshImport('src/lib/auth.js');
+  const config = baseConfig({
+    groups: {
+      groupA: { name: 'A', mode: 'mention', allowFrom: ['*'] },
+      groupB: { name: 'B', mode: 'smart', allowFrom: ['*'] },
+      groupC: { name: 'C', allowFrom: ['*'] }
+    }
+  });
+  assert.equal(getGroupMode(config, 'groupA'), 'mention');
+  assert.equal(getGroupMode(config, 'groupB'), 'smart');
+  assert.equal(getGroupMode(config, 'groupC'), 'mention');
+  assert.equal(getGroupMode(config, 'missing'), 'mention');
+});
+
 test('auth bindOwner rolls back in-memory state on config save failure', async () => {
   const configDir = path.join(home, 'zylos/components/zalo');
   fs.mkdirSync(configDir, { recursive: true });

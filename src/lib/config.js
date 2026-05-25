@@ -35,7 +35,14 @@ export const DEFAULT_CONFIG = {
     maxLength: 2000,
     mediaMaxMb: 10
   },
-  internal_port: 3462
+  logging: {
+    maxLogBytes: 512 * 1024
+  },
+  retention: {
+    mediaMaxAgeDays: 7
+  },
+  internal_port: 3462,
+  webhookPort: 3464
 };
 
 function loadDotEnv() {

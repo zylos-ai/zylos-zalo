@@ -1,6 +1,6 @@
 ---
 name: zalo
-version: 0.1.1
+version: 0.1.2
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),
@@ -38,13 +38,10 @@ config:
       description: "Zalo Bot Platform token (numeric_id:secret format, from bot.zaloplatforms.com)"
       sensitive: true
 
-next-steps:
-  - "Local file hosting for outbound images (tokenized HTTPS routes)"
-  - "Quote-reply support once Zalo Bot API contract is verified"
-
 http_routes:
   - path: /zalo/webhook
-    target: http://localhost:3462
+    target: http://localhost:3464
+    type: reverse_proxy
     description: "Zalo Bot webhook endpoint (webhook delivery mode only)"
 
 dependencies:
@@ -118,21 +115,32 @@ Webhook mode verifies the secret with timing-safe comparison, rate-limits
 requests, and ignores duplicate event/chat/message ids during the configured
 dedup window. `webhookSecret` is required in webhook mode.
 
+Group `mode` controls message forwarding: `mention` (default) only forwards
+messages that @mention the bot; `smart` forwards all messages with an agent
+discretion hint. Mode is set per-group in config.
+
 Inbound Zalo image events are downloaded to `media/` and forwarded to C4 as file
 attachments. The default max image size is 10 MB and can be adjusted with
 `message.mediaMaxMb`.
+
+Chat logs rotate at `logging.maxLogBytes` (default 512 KB). Inbound media is
+deleted after `retention.mediaMaxAgeDays` (default 7 days), with cleanup at
+startup and every 6 hours.
 
 ## Delivery Modes
 
 **Polling (default):** No public URL needed. Set `"delivery": "polling"` in config.
 
-**Webhook:** Set in config:
+**Webhook:** Caddy terminates HTTPS and proxies `/zalo/webhook` to the local
+webhook listener on `webhookPort` (default 3464). The internal record-outgoing
+API runs on a separate `internal_port` (default 3462). Set in config:
 ```json
 {
   "delivery": "webhook",
   "webhookUrl": "https://your-domain.com/zalo/webhook",
   "webhookSecret": "your-secret",
-  "webhookPath": "/zalo/webhook"
+  "webhookPath": "/zalo/webhook",
+  "webhookPort": 3464
 }
 ```
 

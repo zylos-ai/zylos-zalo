@@ -55,6 +55,13 @@ test('config token in config.json takes precedence over env fallback', async () 
   });
 });
 
+test('DEFAULT_CONFIG includes logging and retention defaults', async () => {
+  const { DEFAULT_CONFIG } = await freshImport('src/lib/config.js');
+  assert.equal(DEFAULT_CONFIG.logging.maxLogBytes, 512 * 1024);
+  assert.equal(DEFAULT_CONFIG.retention.mediaMaxAgeDays, 7);
+  assert.equal(DEFAULT_CONFIG.webhookPort, 3464);
+});
+
 test('saveConfig writes atomically parseable JSON', async () => {
   await withTempHome(async (home) => {
     const { saveConfig } = await freshImport('src/lib/config.js');
