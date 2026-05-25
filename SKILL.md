@@ -26,7 +26,7 @@ lifecycle:
   preserve:
     - config.json
     - logs/
-    - data/
+    - media/
 
 upgrade:
   repo: zylos-ai/zylos-zalo
@@ -37,6 +37,15 @@ config:
     - name: ZALO_BOT_TOKEN
       description: "Zalo Bot Platform token (numeric_id:secret format, from bot.zaloplatforms.com)"
       sensitive: true
+
+next-steps:
+  - "Local file hosting for outbound images (tokenized HTTPS routes)"
+  - "Quote-reply support once Zalo Bot API contract is verified"
+
+http_routes:
+  - path: /zalo/webhook
+    target: http://localhost:3462
+    description: "Zalo Bot webhook endpoint (webhook delivery mode only)"
 
 dependencies:
   - comm-bridge

@@ -12,8 +12,8 @@
  * Note: Service restart is handled by Claude after this hook.
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const HOME = process.env.HOME;
 const DATA_DIR = path.join(HOME, 'zylos/components/zalo');
@@ -46,8 +46,9 @@ if (fs.existsSync(configPath)) {
     // Save if migrated
     if (migrated) {
       const tmp = configPath + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n');
+      fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
       fs.renameSync(tmp, configPath);
+      try { fs.chmodSync(configPath, 0o600); } catch {}
       console.log('Config migrations applied:');
       migrations.forEach(m => console.log('  - ' + m));
     } else {

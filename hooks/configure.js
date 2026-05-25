@@ -54,10 +54,11 @@ try {
     config[key] = value;
   }
 
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
   const tmp = CONFIG_PATH + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n');
+  fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
   fs.renameSync(tmp, CONFIG_PATH);
+  try { fs.chmodSync(CONFIG_PATH, 0o600); } catch {}
   console.log(`[configure] Wrote config to ${CONFIG_PATH}`);
 } catch (err) {
   console.error(`[configure] ${err.message}`);

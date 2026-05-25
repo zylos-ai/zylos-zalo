@@ -5,14 +5,14 @@
  * Supports both long polling (default) and webhook delivery modes.
  */
 
-import { execFile } from 'child_process';
-import http from 'http';
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { execFile } from 'node:child_process';
+import http from 'node:http';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { loadConfig, DATA_DIR } from './lib/config.js';
+import { loadConfig, DATA_DIR, repairConfigPermissions } from './lib/config.js';
 import {
   hasOwner, bindOwner, isDmAllowed,
   isGroupAllowed, isGroupSenderAllowed, getGroupName
@@ -31,6 +31,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+repairConfigPermissions();
 let config = loadConfig();
 const botToken = config.botToken;
 if (!botToken) {
@@ -164,10 +165,14 @@ try {
 // Endpoint builder
 // ============================================================
 
+function safeId(raw) {
+  return String(raw).replace(/[^a-zA-Z0-9_:-]/g, '_');
+}
+
 function buildEndpoint(chatId, { messageId } = {}) {
   let endpoint = String(chatId);
   if (messageId) {
-    const correlationId = `${chatId}:${messageId}`;
+    const correlationId = safeId(`${chatId}:${messageId}`);
     endpoint += `|msg:${messageId}|req:${correlationId}`;
   }
   return endpoint;
@@ -268,7 +273,7 @@ function processAuthorizedMessage({ info, text, mediaPath }) {
   }, config);
 
   const endpoint = buildEndpoint(info.chatId, { messageId: info.messageId });
-  const correlationId = `${info.chatId}:${info.messageId}`;
+  const correlationId = safeId(`${info.chatId}:${info.messageId}`);
   startTyping(info.chatId, correlationId);
 
   const msg = buildC4Message({ info, text, mediaPath });
@@ -387,7 +392,7 @@ function startWebhookServer(port, webhookPath, webhookSecret) {
       let size = 0;
       req.on('data', chunk => {
         size += chunk.length;
-        if (size > 64 * 1024) { req.destroy(); return; }
+        if (size > 64 * 1024) { res.writeHead(413).end('payload too large'); req.destroy(); return; }
         chunks.push(chunk);
       });
       req.on('end', () => {
@@ -471,7 +476,7 @@ function handleRecordOutgoing(req, res) {
   let size = 0;
   req.on('data', chunk => {
     size += chunk.length;
-    if (size > 64 * 1024) { req.destroy(); return; }
+    if (size > 64 * 1024) { res.writeHead(413).end('payload too large'); req.destroy(); return; }
     chunks.push(chunk);
   });
   req.on('end', () => {
@@ -533,7 +538,7 @@ function startInternalServer(portOverride) {
 // ============================================================
 
 async function main() {
-  console.log('[zalo] Starting zylos-zalo v0.1.0...');
+  console.log(`[zalo] Starting zylos-zalo v${process.env.npm_package_version || '0.1.1'}...`);
   console.log(`[zalo] Data directory: ${DATA_DIR}`);
 
   if (!config.enabled) {

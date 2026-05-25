@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 export function timingSafeStringEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;

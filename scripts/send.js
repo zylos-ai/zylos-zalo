@@ -8,8 +8,8 @@
  *   echo "[MEDIA:image]https://example.com/image.png" | node scripts/send.js <endpoint_id>
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadConfig, DATA_DIR } from '../src/lib/config.js';
 import { sendMessage, sendPhoto, sendSticker, setApiBaseUrl } from '../src/lib/api.js';
 
@@ -58,9 +58,14 @@ function parseEndpoint(raw) {
   return result;
 }
 
+function safeCorrelationId(raw) {
+  if (!raw) return null;
+  return String(raw).replace(/[^a-zA-Z0-9_:-]/g, '_');
+}
+
 const parsed = parseEndpoint(endpointRaw);
 const chatId = parsed.chatId;
-const correlationId = parsed.req || null;
+const correlationId = safeCorrelationId(parsed.req);
 
 if (!chatId) {
   console.error('Error: invalid endpoint (missing chatId)');

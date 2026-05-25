@@ -2,8 +2,8 @@
  * Configuration loader for zylos-zalo
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const HOME = process.env.HOME;
 export const DATA_DIR = path.join(HOME, 'zylos/components/zalo');
@@ -97,12 +97,22 @@ export function loadConfig() {
 export function saveConfig(config) {
   const tmp = CONFIG_PATH + '.tmp';
   try {
-    fs.writeFileSync(tmp, JSON.stringify(config, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(config, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, CONFIG_PATH);
+    try { fs.chmodSync(CONFIG_PATH, 0o600); } catch {}
     return true;
   } catch (err) {
     console.error(`[zalo] Failed to save config: ${err.message}`);
     try { fs.unlinkSync(tmp); } catch {}
     return false;
+  }
+}
+
+export function repairConfigPermissions() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) fs.chmodSync(CONFIG_PATH, 0o600);
+    if (fs.existsSync(DATA_DIR)) fs.chmodSync(DATA_DIR, 0o700);
+  } catch (err) {
+    console.warn(`[zalo] Failed to repair permissions: ${err.message}`);
   }
 }

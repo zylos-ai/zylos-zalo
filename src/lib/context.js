@@ -2,13 +2,14 @@
  * Chat history and message formatting for zylos-zalo
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { DATA_DIR } from './config.js';
 
 const LOGS_DIR = path.join(DATA_DIR, 'logs');
 fs.mkdirSync(LOGS_DIR, { recursive: true });
 
+const MAX_TRACKED_CHATS = 500;
 const chatHistories = new Map();
 const replayedKeys = new Set();
 
@@ -31,9 +32,18 @@ function getHistoryLimit(chatId, config) {
   return gc?.historyLimit || config?.message?.context_messages || 5;
 }
 
+function evictOldest(collection, maxSize) {
+  while (collection.size > maxSize) {
+    collection.delete(collection.keys().next().value);
+  }
+}
+
 export function recordEntry(chatId, entry, config) {
   chatId = String(chatId);
-  if (!chatHistories.has(chatId)) chatHistories.set(chatId, []);
+  if (!chatHistories.has(chatId)) {
+    chatHistories.set(chatId, []);
+    evictOldest(chatHistories, MAX_TRACKED_CHATS);
+  }
   const history = chatHistories.get(chatId);
 
   if (entry.message_id && !String(entry.message_id).startsWith('bot:')) {
@@ -58,6 +68,30 @@ export function logAndRecord(chatId, entry, config) {
   recordEntry(chatId, entry, config);
 }
 
+function readTailLines(filePath, count) {
+  const CHUNK = 4096;
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const stat = fs.fstatSync(fd);
+    if (stat.size === 0) return [];
+    let pos = stat.size;
+    let tail = '';
+    while (pos > 0) {
+      const readSize = Math.min(CHUNK, pos);
+      pos -= readSize;
+      const buf = Buffer.alloc(readSize);
+      fs.readSync(fd, buf, 0, readSize, pos);
+      tail = buf.toString('utf-8') + tail;
+      const lines = tail.trim().split('\n').filter(l => l);
+      if (lines.length > count) return lines.slice(-count);
+    }
+    return tail.trim().split('\n').filter(l => l).slice(-count);
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch {}
+  }
+}
+
 export function ensureReplay(chatId, config) {
   chatId = String(chatId);
   if (replayedKeys.has(chatId)) return;
@@ -65,20 +99,20 @@ export function ensureReplay(chatId, config) {
   const logFile = path.join(LOGS_DIR, logFileName(chatId));
   if (!fs.existsSync(logFile)) {
     replayedKeys.add(chatId);
+    evictOldest(replayedKeys, MAX_TRACKED_CHATS);
     return;
   }
 
   const limit = getHistoryLimit(chatId, config);
   try {
-    const content = fs.readFileSync(logFile, 'utf-8');
-    const lines = content.trim().split('\n').filter(l => l);
-    const tail = lines.slice(-limit);
+    const tail = readTailLines(logFile, limit);
     for (const line of tail) {
       try {
         recordEntry(chatId, JSON.parse(line), config);
       } catch {}
     }
     replayedKeys.add(chatId);
+    evictOldest(replayedKeys, MAX_TRACKED_CHATS);
     if (tail.length > 0) {
       console.log(`[zalo] Replayed ${tail.length} log entries for ${chatId}`);
     }

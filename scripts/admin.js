@@ -13,6 +13,7 @@ const commands = {
     const config = loadConfig();
     const safe = { ...config };
     if (safe.botToken) safe.botToken = safe.botToken.substring(0, 8) + '...';
+    if (safe.webhookSecret) safe.webhookSecret = safe.webhookSecret.substring(0, 4) + '...';
     console.log(JSON.stringify(safe, null, 2));
   },
 
