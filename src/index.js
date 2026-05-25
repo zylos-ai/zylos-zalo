@@ -279,7 +279,7 @@ function processAuthorizedMessage({ info, text, mediaPath }) {
   const correlationId = safeId(`${info.chatId}:${info.messageId}`);
   startTyping(info.chatId, correlationId);
 
-  const msg = buildC4Message({ info, text, mediaPath, smartMode });
+  const msg = buildC4Message({ info, text, mediaPath });
   sendToC4('zalo', endpoint, msg, {
     onReject: (errMsg) => {
       stopTyping(correlationId);
