@@ -149,14 +149,6 @@ pm2 logs zylos-zalo
 pm2 restart zylos-zalo
 ```
 
-## Security
-
-- **CDN-only media downloads**: Only images from known Zalo CDN hosts are downloaded. All other URLs are blocked, eliminating DNS rebinding and SSRF risks.
-- **HTTPS enforcement**: Custom API base URLs must use HTTPS (loopback exempted for local development).
-- **Fail-closed config**: If config.json is missing or corrupted after initial setup, the service refuses to start rather than resetting to defaults.
-- **Automatic cleanup**: Media files older than 7 days are deleted; chat logs are rotated at 512KB (configurable).
-- **Webhook hardening**: Timing-safe secret verification, request rate limiting (120/min), and replay deduplication (5-minute window).
-
 ## Tests
 
 ```bash
