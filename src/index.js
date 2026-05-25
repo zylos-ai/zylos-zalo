@@ -399,11 +399,12 @@ function startWebhookServer(port, webhookPath, webhookSecret) {
         if (res.headersSent) return;
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-          if (isDuplicateUpdate(body)) {
+          const update = body.result || body;
+          if (isDuplicateUpdate(update)) {
             res.writeHead(200).end('duplicate');
             return;
           }
-          handleUpdate(body).catch(err => {
+          handleUpdate(update).catch(err => {
             console.error(`[zalo] Webhook handling failed: ${err.message}`);
           });
           res.writeHead(200).end('ok');
