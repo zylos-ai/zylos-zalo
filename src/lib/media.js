@@ -5,7 +5,6 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import dns from 'node:dns/promises';
 import { DATA_DIR } from './config.js';
 
 const MEDIA_DIR = path.join(DATA_DIR, 'media');
@@ -80,14 +79,8 @@ export async function validateDownloadUrl(url) {
   if (parsed.protocol !== 'https:') return false;
   if (isPrivateIP(parsed.hostname)) return false;
   if (ZALO_CDN_PATTERNS.some(p => p.test(parsed.hostname))) return true;
-  try {
-    const addrs = await dns.resolve4(parsed.hostname).catch(() => []);
-    const addrs6 = await dns.resolve6(parsed.hostname).catch(() => []);
-    for (const ip of [...addrs, ...addrs6]) {
-      if (isPrivateIP(ip)) return false;
-    }
-  } catch {}
-  return true;
+  console.warn(`[zalo] Download blocked: ${parsed.hostname} is not a known Zalo CDN host`);
+  return false;
 }
 
 const MAX_REDIRECTS = 5;

@@ -22,7 +22,7 @@ test('downloadImage saves inbound image with safe name and content-type extensio
     );
     try {
       const { downloadImage } = await freshImport('src/lib/media.js');
-      const saved = await downloadImage('https://example.com/photo.bin', {
+      const saved = await downloadImage('https://files.dlfl.vn/photo.bin', {
         messageId: 'msg/with:chars',
         maxBytes: 100
       });
@@ -44,7 +44,7 @@ test('downloadImage falls back to URL extension and rejects failed responses', a
     );
     try {
       const { downloadImage } = await freshImport('src/lib/media.js');
-      const saved = await downloadImage('https://example.com/path/photo.gif', { messageId: 'm2', maxBytes: 100 });
+      const saved = await downloadImage('https://files.dlfl.vn/path/photo.gif', { messageId: 'm2', maxBytes: 100 });
       assert.equal(path.basename(saved.path), 'm2.gif');
     } finally {
       restore();
@@ -53,7 +53,7 @@ test('downloadImage falls back to URL extension and rejects failed responses', a
     restore = installFetch(async () => new Response('missing', { status: 404 }));
     try {
       const { downloadImage } = await freshImport('src/lib/media.js');
-      await assert.rejects(() => downloadImage('https://example.com/missing.png'), /HTTP 404/);
+      await assert.rejects(() => downloadImage('https://files.dlfl.vn/missing.png'), /HTTP 404/);
     } finally {
       restore();
     }
@@ -67,7 +67,7 @@ test('downloadImage enforces content-length and streamed byte limits', async () 
     );
     try {
       const { downloadImage } = await freshImport('src/lib/media.js');
-      await assert.rejects(() => downloadImage('https://example.com/a.png', { maxBytes: 2 }), /exceeds 2 bytes/);
+      await assert.rejects(() => downloadImage('https://files.dlfl.vn/a.png', { maxBytes: 2 }), /exceeds 2 bytes/);
     } finally {
       restore();
     }
@@ -75,7 +75,7 @@ test('downloadImage enforces content-length and streamed byte limits', async () 
     restore = installFetch(async () => new Response(Buffer.from('too big'), { status: 200 }));
     try {
       const { downloadImage } = await freshImport('src/lib/media.js');
-      await assert.rejects(() => downloadImage('https://example.com/a.png', { maxBytes: 2 }), /exceeds 2 bytes/);
+      await assert.rejects(() => downloadImage('https://files.dlfl.vn/a.png', { maxBytes: 2 }), /exceeds 2 bytes/);
     } finally {
       restore();
     }

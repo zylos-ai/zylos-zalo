@@ -82,11 +82,20 @@ test('downloadImage blocks redirect to private IP', async () => {
     });
     try {
       const { downloadImage } = await freshImport('src/lib/media.js');
-      const result = await downloadImage('https://example.com/redir.png');
+      const result = await downloadImage('https://files.dlfl.vn/redir.png');
       assert.equal(result, null);
     } finally {
       globalThis.fetch = previous;
     }
+  });
+});
+
+test('validateDownloadUrl blocks non-CDN hostnames (CDN-only policy)', async () => {
+  await withTempHome(async () => {
+    const { validateDownloadUrl } = await freshImport('src/lib/media.js');
+    assert.equal(await validateDownloadUrl('https://example.com/img.png'), false, 'non-CDN host');
+    assert.equal(await validateDownloadUrl('https://evil.com/img.png'), false, 'arbitrary host');
+    assert.equal(await validateDownloadUrl('https://attacker.dlfl.vn.evil.com/img.png'), false, 'CDN-suffix lookalike');
   });
 });
 
@@ -215,12 +224,13 @@ test('validateDownloadUrl blocks IPv6 loopback and private-mapped addresses', as
     assert.equal(await validateDownloadUrl('https://[::ffff:10.0.0.1]/x.png'), false, 'mapped 10.x');
     assert.equal(await validateDownloadUrl('https://[::ffff:192.168.1.1]/x.png'), false, 'mapped 192.168.x');
     assert.equal(await validateDownloadUrl('https://[::ffff:172.16.0.1]/x.png'), false, 'mapped 172.16.x');
-    // fe80::/10 link-local range boundary (fe80-febf)
+    // fe80::/10 link-local range boundary (fe80-febf) — blocked as private IPs
     assert.equal(await validateDownloadUrl('https://[fe80::1]/x.png'), false, 'link-local fe80');
     assert.equal(await validateDownloadUrl('https://[fe90::1]/x.png'), false, 'link-local fe90');
     assert.equal(await validateDownloadUrl('https://[fea0::1]/x.png'), false, 'link-local fea0');
     assert.equal(await validateDownloadUrl('https://[febf::1]/x.png'), false, 'link-local febf');
-    assert.equal(await validateDownloadUrl('https://[fec0::1]/x.png'), true, 'outside link-local fec0');
+    // fec0 is outside link-local but still blocked by CDN-only policy
+    assert.equal(await validateDownloadUrl('https://[fec0::1]/x.png'), false, 'non-CDN IPv6 host');
   });
 });
 
@@ -340,12 +350,12 @@ test('downloadImage enforces redirect hop limit', async () => {
       fetchCount++;
       return new Response('', {
         status: 302,
-        headers: { location: `https://example.com/hop${fetchCount}.png` }
+        headers: { location: `https://files.dlfl.vn/hop${fetchCount}.png` }
       });
     };
     try {
       const { downloadImage } = await freshImport('src/lib/media.js');
-      const result = await downloadImage('https://example.com/start.png', { messageId: 'redir-test' });
+      const result = await downloadImage('https://files.dlfl.vn/start.png', { messageId: 'redir-test' });
       assert.equal(result, null, 'should return null after too many redirects');
       assert.ok(fetchCount <= 7, `should not follow unlimited redirects (got ${fetchCount})`);
     } finally {
