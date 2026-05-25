@@ -77,6 +77,16 @@ function deepMerge(defaults, overrides) {
 
 let lastGoodConfig = null;
 
+function hasPriorOperationEvidence() {
+  const logsDir = path.join(DATA_DIR, 'logs');
+  try {
+    if (fs.existsSync(logsDir) && fs.readdirSync(logsDir).length > 0) return true;
+  } catch {}
+  const backupPath = CONFIG_PATH + '.bak';
+  if (fs.existsSync(backupPath)) return true;
+  return false;
+}
+
 export function loadConfig() {
   loadDotEnv();
   try {
@@ -89,19 +99,27 @@ export function loadConfig() {
       lastGoodConfig = config;
       return config;
     }
-    if (!lastGoodConfig) {
-      console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
-      return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
+    if (lastGoodConfig) {
+      console.warn(`[zalo] Config file not found, retaining last-known-good config`);
+      return lastGoodConfig;
     }
-    console.warn(`[zalo] Config file not found, retaining last-known-good config`);
-    return lastGoodConfig;
+    if (hasPriorOperationEvidence()) {
+      console.error(`[zalo] Config file missing but prior operation detected — refusing to start with defaults. Restore config.json or its backup.`);
+      process.exit(1);
+    }
+    console.warn(`[zalo] Config file not found: ${CONFIG_PATH}`);
+    return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
   } catch (err) {
-    if (!lastGoodConfig) {
-      console.error(`[zalo] Failed to load config: ${err.message}`);
-      return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
+    if (lastGoodConfig) {
+      console.error(`[zalo] Config reload failed, retaining last-known-good config: ${err.message}`);
+      return lastGoodConfig;
     }
-    console.error(`[zalo] Config reload failed, retaining last-known-good config: ${err.message}`);
-    return lastGoodConfig;
+    if (hasPriorOperationEvidence()) {
+      console.error(`[zalo] Config unreadable and prior operation detected — refusing to start. Fix config.json: ${err.message}`);
+      process.exit(1);
+    }
+    console.error(`[zalo] Failed to load config: ${err.message}`);
+    return { ...DEFAULT_CONFIG, botToken: process.env.ZALO_BOT_TOKEN || null };
   }
 }
 

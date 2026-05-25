@@ -153,6 +153,42 @@ test('loadConfig retains last-known-good config when file becomes unreadable', a
   });
 });
 
+test('loadConfig exits on cold start with missing config when prior operation evidence exists', async () => {
+  await withTempHome(async (home) => {
+    const dataDir = path.join(home, 'zylos/components/zalo');
+    const logsDir = path.join(dataDir, 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    fs.writeFileSync(path.join(logsDir, 'chat123.jsonl'), '{"text":"hi"}\n');
+    // No config.json — simulates config loss after prior operation
+
+    const { runNode } = await import('./helpers.js');
+    const result = await runNode(
+      ['-e', 'import("./src/lib/config.js").then(m => { m.loadConfig(); console.log("LOADED"); })'],
+      { env: { HOME: home, ZALO_BOT_TOKEN: 'env-token' } }
+    );
+    assert.notEqual(result.stdout.trim(), 'LOADED', 'should not load defaults when prior operation detected');
+    assert.ok(result.code !== 0 || result.stderr.includes('prior operation'), 'should exit or warn about prior operation');
+  });
+});
+
+test('loadConfig exits on cold start with malformed config when prior operation evidence exists', async () => {
+  await withTempHome(async (home) => {
+    const dataDir = path.join(home, 'zylos/components/zalo');
+    const logsDir = path.join(dataDir, 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    fs.writeFileSync(path.join(logsDir, 'chat123.jsonl'), '{"text":"hi"}\n');
+    fs.writeFileSync(path.join(dataDir, 'config.json'), 'CORRUPT{{{', { mode: 0o600 });
+
+    const { runNode } = await import('./helpers.js');
+    const result = await runNode(
+      ['-e', 'import("./src/lib/config.js").then(m => { m.loadConfig(); console.log("LOADED"); })'],
+      { env: { HOME: home, ZALO_BOT_TOKEN: 'env-token' } }
+    );
+    assert.notEqual(result.stdout.trim(), 'LOADED', 'should not load defaults when prior operation detected');
+    assert.ok(result.code !== 0 || result.stderr.includes('prior operation'), 'should exit or warn about prior operation');
+  });
+});
+
 // ─── IPv6 SSRF bypass (ZR2-2 MEDIUM) ───
 
 test('validateDownloadUrl blocks IPv6 loopback and private-mapped addresses', async () => {
@@ -163,6 +199,12 @@ test('validateDownloadUrl blocks IPv6 loopback and private-mapped addresses', as
     assert.equal(await validateDownloadUrl('https://[::ffff:10.0.0.1]/x.png'), false, 'mapped 10.x');
     assert.equal(await validateDownloadUrl('https://[::ffff:192.168.1.1]/x.png'), false, 'mapped 192.168.x');
     assert.equal(await validateDownloadUrl('https://[::ffff:172.16.0.1]/x.png'), false, 'mapped 172.16.x');
+    // fe80::/10 link-local range boundary (fe80-febf)
+    assert.equal(await validateDownloadUrl('https://[fe80::1]/x.png'), false, 'link-local fe80');
+    assert.equal(await validateDownloadUrl('https://[fe90::1]/x.png'), false, 'link-local fe90');
+    assert.equal(await validateDownloadUrl('https://[fea0::1]/x.png'), false, 'link-local fea0');
+    assert.equal(await validateDownloadUrl('https://[febf::1]/x.png'), false, 'link-local febf');
+    assert.equal(await validateDownloadUrl('https://[fec0::1]/x.png'), true, 'outside link-local fec0');
   });
 });
 

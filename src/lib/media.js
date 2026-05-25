@@ -59,7 +59,8 @@ function isPrivateIP(raw) {
   if (net.isIPv4(stripped)) return isPrivateIPv4(stripped);
 
   if (stripped === '::1' || stripped === '::' || stripped === '0:0:0:0:0:0:0:1' || stripped === '0000:0000:0000:0000:0000:0000:0000:0001') return true;
-  if (stripped.startsWith('fe80:') || stripped.startsWith('fc') || stripped.startsWith('fd')) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(stripped)) return true;
+  if (stripped.startsWith('fc') || stripped.startsWith('fd')) return true;
 
   return false;
 }
