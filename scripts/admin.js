@@ -137,7 +137,9 @@ Commands:
 
 Permission flow:
   DM: dmPolicy (open|allowlist|owner) + dmAllowFrom
-  Owner always bypasses all checks.
+  Group: groupPolicy (open|allowlist|disabled) + per-group allowFrom
+  Owner bypasses allowlist checks only. groupPolicy: disabled blocks
+  all group messages, including from owner.
 
 After changes, restart bot: pm2 restart zylos-zalo
 `);
