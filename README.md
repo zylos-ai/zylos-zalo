@@ -4,8 +4,10 @@
 
 <h1 align="center">zylos-zalo</h1>
 
+> **Zylos** (/ˈzaɪ.lɒs/ 赛洛丝) — Give your AI a life
+
 <p align="center">
-  Zalo Bot Platform communication channel for Zylos Agent
+  Zalo Bot Platform messaging component for <a href="https://github.com/zylos-ai/zylos-core">Zylos</a> agents.
 </p>
 
 <p align="center">
@@ -17,151 +19,84 @@
   <a href="https://coco.xyz"><img src="https://img.shields.io/badge/Built%20by-Coco-orange" alt="Built by Coco"></a>
 </p>
 
+<p align="center">
+  <a href="./README.zh-CN.md">中文</a>
+</p>
+
 ---
 
-- **Dual delivery modes** — Long polling (default, no public URL needed) and webhook (production)
-- **DM access control** — Owner auto-binding, allowlist, open, or owner-only policies
-- **Group routing** — Allowlisted group chats with per-group sender allowlists and replayed context
-- **Inbound image download** — Downloads received Zalo images into component media storage and forwards them to C4 as file attachments
-- **Sticker support** — Forwards inbound stickers and sends outbound stickers
-- **Webhook hardening** — Timing-safe secret checks, request rate limiting, and short-window replay deduplication
-- **Outbound formatting** — Markdown is flattened before sending, long messages split on paragraphs, and stickers are supported
-- **Typing indicators** — Sends `sendChatAction` while waiting for agent response
-- **C4 bridge integration** — Full message routing through the Zylos communication bridge
-- **Zero npm dependencies** — Uses only Node.js built-in APIs
+- **Chat on Zalo** — your AI agent lives in Zalo, supporting private and group conversations
+- **Dual delivery modes** — long polling (no public URL needed) or webhook for production (see [note](#webhook-mode))
+- **Zero-config start** — first message auto-binds you as admin, no setup wizards
+- **Media support** — send and receive photos, stickers, and typing indicators
+- **Zero npm dependencies** — uses only Node.js built-in APIs
 
-## Install
+## Getting Started
+
+Tell your Zylos agent:
+
+> "Install the zalo component"
+
+Or use the CLI:
 
 ```bash
 zylos add zalo
 ```
 
-Or manually:
+Zylos will guide you through the setup, including obtaining a bot token from [bot.zaloplatforms.com](https://bot.zaloplatforms.com). Once installed, message your bot on Zalo — the first user to interact becomes the admin.
+
+## Managing the Bot
+
+Just tell your Zylos agent what you need:
+
+| Task | Example |
+|------|---------|
+| Add user to allowlist | "Add user xxx to zalo allowlist" |
+| Change DM policy | "Set zalo DM policy to open" |
+| Check status | "Show zalo bot status" |
+| Switch to webhook | "Switch zalo to webhook mode" |
+| Restart bot | "Restart zalo bot" |
+| Upgrade | "Upgrade zalo component" |
+| Uninstall | "Uninstall zalo component" |
+
+Or manage via CLI:
 
 ```bash
-cd ~/zylos/.claude/skills
-git clone https://github.com/zylos-ai/zylos-zalo.git zalo
-cd zalo
+zylos upgrade zalo
+zylos uninstall zalo
 ```
 
-## Configuration
+## Group Chat Behavior
 
-Edit `~/zylos/components/zalo/config.json`:
+| Scenario | Bot Response |
+|----------|--------------|
+| Private chat (owner/allowlisted) | Responds via Claude |
+| Allowed group message | Receives with context |
+| Owner in any allowed group | Always responds |
+| `groupPolicy: disabled` | All group messages blocked |
+| Unknown user | Ignored |
 
-```json
-{
-  "enabled": true,
-  "botToken": "YOUR_BOT_TOKEN",
-  "apiBaseUrl": "https://bot-api.zaloplatforms.com",
-  "delivery": "polling",
-  "dmPolicy": "owner"
-}
-```
+## Webhook Mode
 
-Get your bot token from [bot.zaloplatforms.com](https://bot.zaloplatforms.com).
+Webhook delivery mode requires your app to be reviewed and approved by Zalo before they will deliver events to your endpoint. Until approved, **use polling mode** (the default) — it works out of the box with no public URL or Zalo approval needed.
 
-Alternatively, set `ZALO_BOT_TOKEN` in `~/zylos/.env`. A token in `config.json`
-takes precedence when both are present.
+## Documentation
 
-### Group chats
+- [SKILL.md](./SKILL.md) — Component specification
+- [DESIGN.md](./DESIGN.md) — Architecture and design
+- [CHANGELOG.md](./CHANGELOG.md) — Version history
 
-Groups are disabled by default unless `groupPolicy` is set to `open` or the
-group chat is present in `groups`:
+## Contributing
 
-```json
-{
-  "groupPolicy": "allowlist",
-  "groups": {
-    "123456789": {
-      "name": "Team Chat",
-      "allowFrom": ["*"],
-      "historyLimit": 5
-    }
-  }
-}
-```
-
-Set `allowFrom` to specific Zalo user IDs to restrict which group members may
-trigger the agent. The owner bypasses per-group allowlists but not
-`groupPolicy: disabled`, which is absolute.
-
-### Webhook mode (production)
-
-```json
-{
-  "delivery": "webhook",
-  "webhookUrl": "https://your-domain.com/zalo/webhook",
-  "webhookSecret": "your-secret",
-  "webhookPort": 3464
-}
-```
-
-Caddy terminates HTTPS and proxies `/zalo/webhook` to the local webhook listener
-on `webhookPort` (default 3464). The internal API runs separately on
-`internal_port` (default 3462, localhost only).
-
-## Usage
-
-Send messages via C4 bridge:
-
-```bash
-cat <<'EOF' | node ~/zylos/.claude/skills/comm-bridge/scripts/c4-send.js "zalo" "<chat_id>"
-Hello from Zylos!
-EOF
-```
-
-Outbound images must use a public image URL:
-
-```bash
-node scripts/send.js "<chat_id>" "[MEDIA:image]https://example.com/image.png"
-```
-
-Local outbound image files are not hosted automatically yet. The concrete path
-for that is a short-lived HTTPS media route on the component's webhook server
-that exposes local files as tokenized public URLs before calling Zalo
-`sendPhoto`.
-
-The Bot Platform API wrapper does not implement quote replies. C4 endpoint
-message ids are preserved for correlation, but outbound replies are sent as
-plain messages until a verified Bot Platform quote-reply contract exists.
-
-## Admin CLI
-
-Manage configuration without editing JSON directly:
-
-```bash
-node scripts/admin.js help                        # Show all commands
-node scripts/admin.js show                        # Show config (token masked)
-node scripts/admin.js set-dm-policy allowlist      # Set DM policy
-node scripts/admin.js add-dm-allow <user_id>       # Add user to allowlist
-node scripts/admin.js set-delivery webhook         # Switch delivery mode
-node scripts/admin.js show-owner                   # Show bound owner
-```
-
-After changes, restart the service: `pm2 restart zylos-zalo`
-
-## Service Management
-
-```bash
-pm2 status zylos-zalo
-pm2 logs zylos-zalo
-pm2 restart zylos-zalo
-```
-
-## Tests
-
-```bash
-npm test
-```
-
-The suite uses Node's built-in test runner and covers API payload/error
-handling, access control, config/env loading, context formatting/history,
-inbound media download, webhook security helpers, lifecycle hooks, and the C4
-send script.
+See [Contributing Guide](https://github.com/zylos-ai/.github/blob/main/CONTRIBUTING.md).
 
 ## Built by Coco
 
 Zylos is the open-source core of [Coco](https://coco.xyz/) — the AI employee platform.
+
+We built Zylos because we needed it ourselves: reliable infrastructure to keep AI agents running 24/7 on real work. Every component is battle-tested in production at Coco, serving teams that depend on their AI employees every day.
+
+Want a managed experience? [Coco](https://coco.xyz/) gives you a ready-to-work AI employee — persistent memory, multi-channel communication, and skill packages — deployed in 5 minutes.
 
 ## License
 
