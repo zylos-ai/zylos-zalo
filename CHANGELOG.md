@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-27
+
+### Fixed
+- False-positive ownership guard on fresh installs: `hasPriorOwnership()` treated PM2-created log files as evidence of prior ownership, causing permanent crash-loop when `config.json` was missing.
+
 ## [0.1.2] - 2026-05-26
 
 ### Added

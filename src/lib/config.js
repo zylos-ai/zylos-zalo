@@ -89,10 +89,6 @@ function hasPriorOwnership() {
   if (fs.existsSync(OWNER_MARKER_PATH)) return true;
   if (fs.existsSync(CONFIG_PATH + '.backup')) return true;
   if (fs.existsSync(CONFIG_PATH + '.bak')) return true;
-  const logsDir = path.join(DATA_DIR, 'logs');
-  try {
-    if (fs.existsSync(logsDir) && fs.readdirSync(logsDir).length > 0) return true;
-  } catch {}
   return false;
 }
 
