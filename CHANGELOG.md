@@ -7,19 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-03
+
+Production-readiness hardening pass (review findings B1–B16).
+
 ### Security
 - Validate `ZALO_API_BASE` from the environment with the same HTTPS rules as configured API bases.
 - Reject outbound photo URLs targeting private or loopback IPs.
 - Restrict configure-hook writes to explicitly supported install-time keys.
-- Ensure post-install default `config.json` is written with `0600` permissions.
+- Ensure post-install default `config.json` is written with `0600` permissions, and chmod the pre-upgrade config backup `0600`.
 
 ### Fixed
-- Updated component docs to match the v0.1.4 runtime surface, including admin commands, DM pairing, DM welcome, voice transcription, owner fields, receipt output, and diagnostics.
+- Updated component docs to match the runtime surface, including admin commands, DM pairing, DM welcome, voice transcription, owner fields, receipt output, and diagnostics.
 - Added `dm-pairing.json`, `seen-dm-users.json`, and `.owner-bound` to lifecycle preserve metadata so upgrades keep pairing state, first-contact welcome state, and durable owner-binding evidence.
 - Guard first-contact owner binding against concurrent DM races.
 - Clear media cleanup and C4 retry timers during shutdown.
 - Avoid synchronous audio file reads on the OpenAI transcription path.
 - Cache config and `.env` reads by file mtime, reuse loaded DM pairing state per request, reuse resolved voice transcription providers, and throttle webhook dedup sweeps.
+- Fold inbound image handling into the shared downloaded-placeholder flow with caption preservation.
+- Normalize `getUpdates` single-update vs array results, dedup inbound updates, and advance the polling offset per update so batches are never dropped.
+- Harden webhook dedup keys (use update id / chat id / sender id, avoiding the prior `unknown` collision) and add a bounded inbound dedup set.
+- Increment the internal-server port on `EADDRINUSE` retry and record the successful runtime endpoint.
 
 ## [0.1.4] - 2026-06-02
 
