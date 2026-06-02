@@ -13,13 +13,21 @@ test('timingSafeStringEqual compares hashed strings without accepting mismatches
 
 test('webhook deduper tracks keys for a bounded TTL window', async () => {
   const { createDeduper } = await freshImport('src/lib/webhook-security.js');
-  const deduper = createDeduper({ ttlMs: 100, maxSize: 2 });
+  const deduper = createDeduper({ ttlMs: 100, maxSize: 2, sweepIntervalMs: 0 });
   assert.equal(deduper.isDuplicate('a', 1000), false);
   assert.equal(deduper.isDuplicate('a', 1001), true);
   assert.equal(deduper.isDuplicate('a', 1201), false);
   assert.equal(deduper.isDuplicate('b', 1202), false);
   assert.equal(deduper.isDuplicate('c', 1203), false);
   assert.equal(deduper.size() <= 2, true);
+});
+
+test('webhook deduper throttles TTL sweeps', async () => {
+  const { createDeduper } = await freshImport('src/lib/webhook-security.js');
+  const deduper = createDeduper({ ttlMs: 1, maxSize: 100, sweepIntervalMs: 1000 });
+  assert.equal(deduper.isDuplicate('a', 1000), false);
+  assert.equal(deduper.isDuplicate('a', 1002), true, 'entry remains until sweep interval elapses');
+  assert.equal(deduper.isDuplicate('a', 2001), false, 'entry expires after throttled sweep runs');
 });
 
 test('rate limiter enforces a fixed request window per key', async () => {

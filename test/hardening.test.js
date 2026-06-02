@@ -391,6 +391,28 @@ test('authorizeMessage guards first-contact owner binding against concurrent rac
   assert.ok(src.includes('finally'), 'must reset the in-progress flag after bind attempt');
 });
 
+test('runtime source clears resource timers on shutdown', () => {
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('mediaCleanupInterval'), 'must store media cleanup interval');
+  assert.ok(src.includes('mediaCleanupInterval.unref?.()'), 'media cleanup interval should not pin the event loop');
+  assert.ok(src.includes('clearInterval(mediaCleanupInterval)'), 'must clear media cleanup interval on shutdown');
+  assert.ok(src.includes('c4RetryTimers'), 'must track C4 retry timers');
+  assert.ok(src.includes('for (const timer of c4RetryTimers) clearTimeout(timer)'), 'must cancel C4 retry timers on shutdown');
+  assert.ok(src.includes('if (stopped) return'), 'C4 retry path must honor shutdown state');
+});
+
+test('voice handler passes resolved transcription provider through', () => {
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('provider: transcriptionProvider'), 'must avoid resolving provider twice per voice message');
+});
+
+test('pairing request path reuses loaded pairing state', () => {
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('const state = loadPairingState()'), 'must load pairing state once');
+  assert.ok(src.includes('getPairingStatus(info.senderId, state)'), 'status check should reuse loaded state');
+  assert.ok(src.includes('}, state);'), 'pending mark should reuse loaded state');
+});
+
 // ─── Context eviction bounds (Z-8 LOW) ───
 
 test('context history evicts entries beyond the tracked chat limit', async () => {

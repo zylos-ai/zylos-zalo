@@ -7,8 +7,9 @@ export function timingSafeStringEqual(a, b) {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-export function createDeduper({ ttlMs = 5 * 60 * 1000, maxSize = 1000 } = {}) {
+export function createDeduper({ ttlMs = 5 * 60 * 1000, maxSize = 1000, sweepIntervalMs = 30_000 } = {}) {
   const seen = new Map();
+  let lastSwept = 0;
 
   function sweep(now) {
     for (const [key, timestamp] of seen) {
@@ -22,7 +23,10 @@ export function createDeduper({ ttlMs = 5 * 60 * 1000, maxSize = 1000 } = {}) {
   return {
     isDuplicate(key, now = Date.now()) {
       if (!key) return false;
-      sweep(now);
+      if (now - lastSwept >= sweepIntervalMs || seen.size > maxSize) {
+        sweep(now);
+        lastSwept = now;
+      }
       if (seen.has(key)) return true;
       seen.set(key, now);
       while (seen.size > maxSize) {

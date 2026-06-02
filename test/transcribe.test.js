@@ -51,3 +51,29 @@ test('transcription provider warns when whisper binary exists without model path
     }
   });
 });
+
+test('OpenAI transcription path reads audio asynchronously', async () => {
+  await withTempHome(async (home) => {
+    const audioPath = path.join(home, 'voice.wav');
+    fs.writeFileSync(audioPath, 'audio-bytes');
+    const originalFetch = globalThis.fetch;
+    const originalReadFileSync = fs.readFileSync;
+    globalThis.fetch = async () => new Response(JSON.stringify({ text: 'hello' }), { status: 200 });
+    fs.readFileSync = function patchedReadFileSync(filePath, ...args) {
+      if (String(filePath) === audioPath) throw new Error('sync read should not be used');
+      return originalReadFileSync.call(this, filePath, ...args);
+    };
+
+    try {
+      const { transcribeAudio } = await freshImport('src/lib/transcribe.js');
+      const text = await transcribeAudio(audioPath, {
+        provider: { available: true, provider: 'openai-api' },
+        env: { OPENAI_API_KEY: 'sk-test' }
+      });
+      assert.equal(text, 'hello');
+    } finally {
+      globalThis.fetch = originalFetch;
+      fs.readFileSync = originalReadFileSync;
+    }
+  });
+});
