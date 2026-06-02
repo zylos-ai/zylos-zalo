@@ -179,13 +179,31 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// Pull the message id out of a Zalo API send result, tolerant of field naming.
+function extractMessageId(result) {
+  if (!result || typeof result !== 'object') return null;
+  return result.message_id ?? result.msg_id ?? result.messageId ?? result.id ?? null;
+}
+
+// Emit a single machine-parseable delivery receipt for C4 correlation.
+function emitReceipt({ status, type, messageIds = [], chunks, error }) {
+  const receipt = { status, type, chatId, correlationId, messageIds, ts: Date.now() };
+  if (chunks !== undefined) receipt.chunks = chunks;
+  if (error) receipt.error = error;
+  console.log('RECEIPT ' + JSON.stringify(receipt));
+}
+
 async function sendText(text) {
   const chunks = splitMessage(stripMarkdown(text), MAX_LENGTH);
+  const messageIds = [];
   for (let i = 0; i < chunks.length; i++) {
-    await sendMessage(botToken, chatId, chunks[i]);
+    const result = await sendMessage(botToken, chatId, chunks[i]);
+    const id = extractMessageId(result);
+    if (id !== null) messageIds.push(id);
     console.log(`Sent chunk ${i + 1}/${chunks.length}`);
     if (i < chunks.length - 1) await sleep(500);
   }
+  return { chunks: chunks.length, messageIds };
 }
 
 async function main() {
@@ -200,6 +218,7 @@ async function main() {
   try {
     if (message.trim() === '[SKIP]') {
       markTypingDone();
+      emitReceipt({ status: 'skipped', type: 'text' });
       console.log('Skipped (smart mode)');
       return;
     }
@@ -209,9 +228,11 @@ async function main() {
       if (!/^https?:\/\//i.test(photoUrl)) {
         throw new Error('Zalo sendPhoto requires a public HTTP(S) image URL; local file hosting is not implemented yet');
       }
-      await sendPhoto(botToken, chatId, photoUrl);
+      const result = await sendPhoto(botToken, chatId, photoUrl);
       markTypingDone();
       await recordOutgoing('[sent a photo]');
+      const id = extractMessageId(result);
+      emitReceipt({ status: 'sent', type: 'photo', messageIds: id !== null ? [id] : [] });
       console.log('Photo sent successfully');
       return;
     }
@@ -219,19 +240,23 @@ async function main() {
     if (message.startsWith('[MEDIA:sticker]')) {
       const sticker = message.substring('[MEDIA:sticker]'.length).trim();
       if (!sticker) throw new Error('Sticker id is required');
-      await sendSticker(botToken, chatId, sticker);
+      const result = await sendSticker(botToken, chatId, sticker);
       markTypingDone();
       await recordOutgoing('[sent a sticker]');
+      const id = extractMessageId(result);
+      emitReceipt({ status: 'sent', type: 'sticker', messageIds: id !== null ? [id] : [] });
       console.log('Sticker sent successfully');
       return;
     }
 
-    await sendText(message);
+    const { chunks, messageIds } = await sendText(message);
     markTypingDone();
     await recordOutgoing(message);
+    emitReceipt({ status: 'sent', type: 'text', messageIds, chunks });
     console.log('Message sent successfully');
   } catch (err) {
     markTypingDone();
+    emitReceipt({ status: 'failed', type: 'text', error: err.message });
     console.error(`Error: ${err.message}`);
     process.exit(1);
   }
