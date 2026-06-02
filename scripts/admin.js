@@ -88,6 +88,39 @@ const commands = {
     }
   },
 
+  'set-dm-welcome': (...parts) => {
+    const message = parts.join(' ').trim();
+    if (!message) {
+      console.error('Usage: admin.js set-dm-welcome <message>');
+      process.exit(1);
+    }
+    const config = loadConfig();
+    config.dmWelcomeMessage = message;
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    console.log('DM welcome message updated');
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
+  'show-dm-welcome': () => {
+    const config = loadConfig();
+    const message = config.dmWelcomeMessage || '';
+    console.log(message || '(disabled)');
+  },
+
+  'clear-dm-welcome': () => {
+    const config = loadConfig();
+    config.dmWelcomeMessage = '';
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    console.log('DM welcome message disabled');
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
   'show-owner': () => {
     const config = loadConfig();
     const owner = config.owner || {};
@@ -128,6 +161,9 @@ Commands:
   list-dm-allow                          Show DM policy and allowFrom list
   add-dm-allow <user_id>                 Add user to dmAllowFrom
   remove-dm-allow <user_id>              Remove user from dmAllowFrom
+  set-dm-welcome <message>               Set first-contact DM welcome message
+  show-dm-welcome                        Show first-contact DM welcome message
+  clear-dm-welcome                       Disable first-contact DM welcome message
 
   Bot Settings:
   set-delivery <polling|webhook>         Set message delivery mode

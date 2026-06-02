@@ -11,6 +11,9 @@ test('config loads defaults when config file is missing', async () => {
     assert.equal(config.enabled, true);
     assert.equal(config.delivery, 'polling');
     assert.equal(config.dmPolicy, 'owner');
+    assert.equal(config.dmWelcomeMessage, '');
+    assert.equal(config.voiceTranscription, 'auto');
+    assert.equal(config.whisperModel, '');
     assert.equal(config.botToken, null);
   });
 });
