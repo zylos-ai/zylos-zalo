@@ -18,7 +18,7 @@ const commands = {
   },
 
   'set-dm-policy': (policy) => {
-    const valid = ['open', 'allowlist', 'owner'];
+    const valid = ['open', 'allowlist', 'owner', 'pairing'];
     policy = String(policy || '').trim().toLowerCase();
     if (!valid.includes(policy)) {
       console.error(`Usage: admin.js set-dm-policy <${valid.join('|')}>`);
@@ -30,7 +30,12 @@ const commands = {
       console.error('[zalo] Failed to save config');
       process.exit(1);
     }
-    const desc = { open: 'Anyone can DM', allowlist: 'Only dmAllowFrom users can DM', owner: 'Only owner can DM' };
+    const desc = {
+      open: 'Anyone can DM',
+      allowlist: 'Only dmAllowFrom users can DM',
+      owner: 'Only owner can DM',
+      pairing: 'Unknown senders request access; owner approves/denies'
+    };
     console.log(`DM policy set to: ${policy} (${desc[policy]})`);
     console.log('Run: pm2 restart zylos-zalo');
   },
@@ -149,6 +154,56 @@ const commands = {
     console.log('Run: pm2 restart zylos-zalo');
   },
 
+  'dm-pending': async () => {
+    const { listPending } = await import('../src/lib/dm-pairing.js');
+    const pending = listPending();
+    if (!pending.length) {
+      console.log('No pending DM access requests.');
+      return;
+    }
+    console.log(`Pending DM access requests (${pending.length}):`);
+    for (const p of pending) {
+      console.log(`  ${p.name || 'unknown'} (${p.user_id}) — requested ${p.requested_at}`);
+      if (p.first_message) console.log(`    first message: ${p.first_message}`);
+    }
+  },
+
+  'dm-approve': async (userId) => {
+    if (!userId) {
+      console.error('Usage: admin.js dm-approve <user_id>');
+      process.exit(1);
+    }
+    const { loadPairingState, savePairingState, approvePairingUser } = await import('../src/lib/dm-pairing.js');
+    const config = loadConfig();
+    const state = loadPairingState();
+    approvePairingUser(config, userId, state);
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    savePairingState(state);
+    console.log(`Approved ${userId} — added to dmAllowFrom. They can now DM the bot.`);
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
+  'dm-deny': async (userId, ...reasonParts) => {
+    if (!userId) {
+      console.error('Usage: admin.js dm-deny <user_id> [reason]');
+      process.exit(1);
+    }
+    const { loadPairingState, savePairingState, denyPairingUser } = await import('../src/lib/dm-pairing.js');
+    const config = loadConfig();
+    const state = loadPairingState();
+    denyPairingUser(config, userId, reasonParts.join(' '), state);
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    savePairingState(state);
+    console.log(`Denied ${userId} — recorded as denied and removed from dmAllowFrom.`);
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
   doctor: async () => {
     const config = loadConfig();
     const { runDoctor, formatDoctorReport } = await import('../src/lib/doctor.js');
@@ -171,13 +226,18 @@ Commands:
   show                                   Show config (token masked)
 
   DM Access Control:
-  set-dm-policy <open|allowlist|owner>   Set DM policy
+  set-dm-policy <open|allowlist|owner|pairing>  Set DM policy
   list-dm-allow                          Show DM policy and allowFrom list
   add-dm-allow <user_id>                 Add user to dmAllowFrom
   remove-dm-allow <user_id>              Remove user from dmAllowFrom
   set-dm-welcome <message>               Set first-contact DM welcome message
   show-dm-welcome                        Show first-contact DM welcome message
   clear-dm-welcome                       Disable first-contact DM welcome message
+
+  DM Pairing (dmPolicy: pairing):
+  dm-pending                             List pending DM access requests
+  dm-approve <user_id>                   Approve a pending request (adds to dmAllowFrom)
+  dm-deny <user_id> [reason]             Deny a request (records denial)
 
   Bot Settings:
   set-delivery <polling|webhook>         Set message delivery mode
@@ -189,7 +249,8 @@ Commands:
   help                                   Show this help
 
 Permission flow:
-  DM: dmPolicy (open|allowlist|owner) + dmAllowFrom
+  DM: dmPolicy (open|allowlist|owner|pairing) + dmAllowFrom
+  pairing: unknown senders are queued for owner approval (dm-pending/approve/deny)
   Group: groupPolicy (open|allowlist|disabled) + per-group allowFrom
   Owner bypasses allowlist checks only. groupPolicy: disabled blocks
   all group messages, including from owner.

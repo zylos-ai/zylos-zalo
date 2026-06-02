@@ -22,6 +22,9 @@ import {
 } from './lib/context.js';
 import { downloadMedia, cleanupOldMedia } from './lib/media.js';
 import { loadSeenDmUsers, sendDmWelcomeIfFirstSeen } from './lib/dm-welcome.js';
+import {
+  getPairingStatus, markPairingPending, savePairingState, buildPairingNotification
+} from './lib/dm-pairing.js';
 import { getTranscriptionProvider, transcribeAudio } from './lib/transcribe.js';
 import {
   getMe, getUpdates, sendMessage, sendChatAction,
@@ -236,6 +239,33 @@ function getMessageInfo(update) {
   return { message, sender, chat, isGroup, chatId, senderId, userName, groupName, messageId };
 }
 
+function notifyPairingRequest(info) {
+  const notification = buildPairingNotification({
+    userId: info.senderId,
+    userName: info.userName,
+    chatId: info.chatId,
+    firstMessage: info.message?.text || '',
+  });
+  sendToC4('zalo', 'admin|type:dm-pairing', notification);
+}
+
+// Pairing DM policy: unknown senders are recorded pending + the owner is
+// notified (via C4); pending/denied senders are dropped silently to avoid spam.
+function handlePairingRequest(info) {
+  const status = getPairingStatus(info.senderId);
+  if (status !== 'unknown') return;
+  const state = markPairingPending({
+    userId: info.senderId,
+    userName: info.userName,
+    chatId: info.chatId,
+    firstMessage: info.message?.text || '',
+  });
+  savePairingState(state);
+  notifyPairingRequest(info);
+  sendMessage(botToken, info.chatId,
+    'Thanks! Your request to chat has been sent to the admin for approval.').catch(() => {});
+}
+
 async function authorizeMessage(info) {
   if (!info.chatId || !info.senderId) return false;
 
@@ -263,7 +293,11 @@ async function authorizeMessage(info) {
   }
 
   if (!isDmAllowed(config, info.senderId)) {
-    sendMessage(botToken, info.chatId, "Sorry, I'm not available. Please ask my admin for access.").catch(() => {});
+    if ((config.dmPolicy || 'owner') === 'pairing') {
+      handlePairingRequest(info);
+    } else {
+      sendMessage(botToken, info.chatId, "Sorry, I'm not available. Please ask my admin for access.").catch(() => {});
+    }
     return false;
   }
 
