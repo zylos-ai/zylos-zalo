@@ -74,8 +74,14 @@ export function getUpdateDedupKey(update) {
   const message = update.message || {};
   const sender = update.sender || message.from || {};
   const chat = message.chat || {};
-  const messageId = update.update_id ?? message.msg_id ?? message.message_id;
+  const eventName = update.event_name || 'event';
+  if (update.update_id !== undefined && update.update_id !== null) {
+    return `${eventName}:update:${update.update_id}`;
+  }
+  const messageId = message.msg_id ?? message.message_id;
   if (messageId === undefined || messageId === null) return null;
-  const chatId = chat.id || message.chat_id || sender.id || 'unknown';
-  return `${update.event_name || 'event'}:${chatId}:${messageId}`;
+  const chatId = chat.id || message.chat_id;
+  if (chatId) return `${eventName}:chat:${chatId}:${messageId}`;
+  if (sender.id) return `${eventName}:sender:${sender.id}:${messageId}`;
+  return null;
 }

@@ -28,6 +28,7 @@ console.log('[pre-upgrade] Running zalo pre-upgrade checks...\n');
 if (fs.existsSync(configPath)) {
   const backupPath = configPath + '.backup';
   fs.copyFileSync(configPath, backupPath);
+  fs.chmodSync(backupPath, 0o600);
   console.log('Config backed up to:', backupPath);
 }
 

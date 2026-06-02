@@ -35,5 +35,5 @@ test('voice handler forwards transcript and transcription failure placeholders',
 
 test('downloaded placeholder treats blocked downloads as failed', () => {
   const code = src();
-  assert.ok(code.includes('if (!saved) text = textDownloadFailed'), 'missing null-download failure path');
+  assert.ok(code.includes('if (!saved) text = caption || textDownloadFailed'), 'missing null-download failure path');
 });

@@ -381,7 +381,9 @@ test('setApiBaseUrl rejects plaintext HTTP for non-loopback targets', async () =
 test('startInternalServer source has bounded retry logic', () => {
   const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
   assert.ok(src.includes('MAX_PORT_RETRIES'), 'must define a retry limit');
-  assert.ok(src.includes('portRetries >= MAX_PORT_RETRIES'), 'must check retry limit before exiting');
+  assert.ok(src.includes('portRetries > MAX_PORT_RETRIES'), 'must check retry limit before exiting');
+  assert.ok(src.includes('const nextPort = port + 1'), 'must retry on an incremented port');
+  assert.ok(src.includes('writeInternalRuntimeFiles(port)'), 'must publish the successful runtime port');
 });
 
 test('authorizeMessage guards first-contact owner binding against concurrent races', () => {
@@ -411,6 +413,28 @@ test('pairing request path reuses loaded pairing state', () => {
   assert.ok(src.includes('const state = loadPairingState()'), 'must load pairing state once');
   assert.ok(src.includes('getPairingStatus(info.senderId, state)'), 'status check should reuse loaded state');
   assert.ok(src.includes('}, state);'), 'pending mark should reuse loaded state');
+});
+
+test('image handling reuses downloaded placeholder path with captions', () => {
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('async function handleImageMessage(update)'));
+  assert.ok(src.includes('await handleDownloadedPlaceholder(update, {'), 'image handling should use shared download path');
+  assert.ok(src.includes("captionKeys: ['caption']"), 'image captions should be preserved');
+  assert.ok(src.includes("urlKeys: ['photo_url', 'image_url', 'url', 'thumb', 'media_url']"), 'image URL keys should be covered');
+});
+
+test('polling normalizes single and array updates and advances offset per update', () => {
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('const updates = Array.isArray(result) ? result : (result ? [result] : [])'), 'must normalize getUpdates result shape');
+  assert.ok(src.includes('function advancePollingOffset(update)'), 'must centralize offset advancement');
+  assert.ok(src.includes('finally {\n          advancePollingOffset(update);'), 'must advance offset after each attempted update');
+});
+
+test('runtime source keeps an inbound dedup Set before webhook deduper', () => {
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('const inboundUpdateKeys = new Set()'), 'must track inbound update keys');
+  assert.ok(src.includes('if (inboundUpdateKeys.has(key)) return true'), 'must drop duplicate inbound keys');
+  assert.ok(src.includes('inboundUpdateKeys.add(key)'), 'must record inbound keys');
 });
 
 // ─── Context eviction bounds (Z-8 LOW) ───

@@ -76,6 +76,7 @@ test('pre-upgrade backs up config and post-upgrade migrates enabled field', asyn
     let result = await runNode(['hooks/pre-upgrade.js'], { env: { HOME: home } });
     assert.equal(result.code, 0, result.stderr);
     assert.equal(fs.existsSync(`${configPath}.backup`), true);
+    assert.equal(fs.statSync(`${configPath}.backup`).mode & 0o777, 0o600);
 
     result = await runNode(['hooks/post-upgrade.js'], { env: { HOME: home } });
     assert.equal(result.code, 0, result.stderr);

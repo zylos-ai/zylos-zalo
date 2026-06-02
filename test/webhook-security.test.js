@@ -44,7 +44,18 @@ test('getUpdateDedupKey uses event, chat, and message ids when present', async (
   const { getUpdateDedupKey } = await freshImport('src/lib/webhook-security.js');
   assert.equal(getUpdateDedupKey({
     event_name: 'message.text.received',
+    update_id: 42,
     message: { msg_id: 'm1', chat: { id: 'g1' } }
-  }), 'message.text.received:g1:m1');
+  }), 'message.text.received:update:42');
+  assert.equal(getUpdateDedupKey({
+    event_name: 'message.text.received',
+    message: { msg_id: 'm1', chat: { id: 'g1' } }
+  }), 'message.text.received:chat:g1:m1');
+  assert.equal(getUpdateDedupKey({
+    event_name: 'message.text.received',
+    sender: { id: 'u1' },
+    message: { msg_id: 'm1' }
+  }), 'message.text.received:sender:u1:m1');
   assert.equal(getUpdateDedupKey({ event_name: 'x', message: {} }), null);
+  assert.equal(getUpdateDedupKey({ event_name: 'x', message: { msg_id: 'm1' } }), null);
 });
