@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Updated component docs to match the v0.1.4 runtime surface, including admin commands, DM pairing, DM welcome, voice transcription, owner fields, receipt output, and diagnostics.
+- Added `dm-pairing.json`, `seen-dm-users.json`, and `.owner-bound` to lifecycle preserve metadata so upgrades keep pairing state, first-contact welcome state, and durable owner-binding evidence.
+
 ## [0.1.4] - 2026-06-02
 
 ### Added

@@ -5,10 +5,10 @@ description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),
   (2) sending proactive messages or media (images, stickers) to Zalo users or groups,
-  (3) managing DM access control (dmPolicy: open/allowlist/owner, dmAllowFrom list),
+  (3) managing DM access control (dmPolicy: open/allowlist/owner/pairing, dmAllowFrom list),
   (4) managing group access control (groupPolicy, per-group allowFrom),
-  (5) configuring the bot (admin CLI, delivery mode, webhook settings),
-  (6) troubleshooting Zalo bot connection or polling issues.
+  (5) configuring the bot (admin CLI, delivery mode, webhook settings, DM welcome, voice transcription),
+  (6) troubleshooting Zalo bot connection, polling, webhook, and local permission issues with doctor diagnostics.
   Config at ~/zylos/components/zalo/config.json. Service: pm2 zylos-zalo.
 type: communication
 
@@ -26,6 +26,9 @@ lifecycle:
     post-upgrade: hooks/post-upgrade.js
   preserve:
     - config.json
+    - dm-pairing.json
+    - seen-dm-users.json
+    - .owner-bound
     - logs/
     - media/
 
@@ -83,8 +86,10 @@ cat <<'EOF' | node ~/zylos/.claude/skills/comm-bridge/scripts/c4-send.js "zalo" 
 EOF
 ```
 
-Inbound Zalo image events are automatically downloaded to `media/` and forwarded
-to C4 as file attachments. The default max image size is 10 MB and can be
+Inbound Zalo photo, file, voice, video, and GIF events are downloaded to
+`media/` where supported and forwarded to C4 as file attachments or clear
+placeholders. Link, location, and sticker events are forwarded as structured
+text placeholders. The default max inbound media size is 10 MB and can be
 adjusted with `message.mediaMaxMb` in config.
 
 ## Config Location
@@ -92,6 +97,9 @@ adjusted with `message.mediaMaxMb` in config.
 - Config: `~/zylos/components/zalo/config.json`
 - Logs: `~/zylos/components/zalo/logs/`
 - Inbound media: `~/zylos/components/zalo/media/`
+- DM pairing queue: `~/zylos/components/zalo/dm-pairing.json`
+- First-contact DM welcome state: `~/zylos/components/zalo/seen-dm-users.json`
+- Durable owner marker: `~/zylos/components/zalo/.owner-bound`
 
 ## Environment Variables
 
@@ -104,6 +112,16 @@ ZALO_BOT_TOKEN=123456789:abc123secret
 
 Alternatively, set `botToken` directly in `config.json` (takes precedence over
 the env variable when both are present).
+
+Optional transcription environment:
+
+```bash
+# Enables OpenAI API fallback when voiceTranscription is "auto" or "api"
+OPENAI_API_KEY=sk-...
+
+# Required for whisper-cli / whisper local transcription when using local mode
+WHISPER_MODEL=/path/to/ggml-model.bin
+```
 
 ## Delivery Modes
 
@@ -146,9 +164,9 @@ Owner info stored in config.json:
 ```json
 {
   "owner": {
-    "bound": true,
-    "id": "xxx",
-    "name": "User Name"
+    "user_id": "xxx",
+    "name": "User Name",
+    "bound_at": "2026-01-01T00:00:00Z"
   }
 }
 ```
@@ -161,8 +179,11 @@ DM and group access are controlled by independent policies:
 {
   "dmPolicy": "owner",
   "dmAllowFrom": ["user_id_1"],
+  "dmWelcomeMessage": "",
   "groupPolicy": "allowlist",
-  "groups": { ... }
+  "groups": {},
+  "voiceTranscription": "auto",
+  "whisperModel": ""
 }
 ```
 
@@ -171,6 +192,7 @@ DM and group access are controlled by independent policies:
 2. `dmPolicy` = `open`? → anyone can DM
 3. `dmPolicy` = `owner`? → only owner can DM
 4. `dmPolicy` = `allowlist`? → check `dmAllowFrom` list; not in list → dropped
+5. `dmPolicy` = `pairing`? → unknown sender is recorded in `dm-pairing.json`, owner is notified via C4, and access waits for approval
 
 **Group message (groupPolicy):**
 1. `groupPolicy` = `disabled`? → all group messages dropped (including owner)
@@ -215,13 +237,20 @@ ADM="node ~/zylos/.claude/skills/zalo/scripts/admin.js"
 # General
 $ADM show                                    # Show full config (token masked)
 $ADM show-owner                              # Show current owner
+$ADM doctor                                  # Run token, delivery, webhook, owner, and permission checks
 $ADM help                                    # Show all commands
 
 # DM Access Control
-$ADM set-dm-policy <open|allowlist|owner>     # Set DM policy
+$ADM set-dm-policy <open|allowlist|owner|pairing> # Set DM policy
 $ADM list-dm-allow                            # Show DM policy + allowFrom list
 $ADM add-dm-allow <user_id>                   # Add user to dmAllowFrom
 $ADM remove-dm-allow <user_id>                # Remove user from dmAllowFrom
+$ADM dm-pending                               # List pending pairing requests
+$ADM dm-approve <user_id>                     # Approve pending DM access
+$ADM dm-deny <user_id> [reason]               # Deny pending DM access
+$ADM set-dm-welcome <message>                 # Set first-contact DM welcome
+$ADM show-dm-welcome                          # Show first-contact DM welcome
+$ADM clear-dm-welcome                         # Disable first-contact DM welcome
 
 # Bot Settings
 $ADM set-delivery <polling|webhook>           # Switch delivery mode
@@ -247,5 +276,12 @@ Configuration in `config.json`:
 Chat logs rotate at `logging.maxLogBytes` (default 512 KB). Inbound media is
 deleted after `retention.mediaMaxAgeDays` (default 7 days), with cleanup at
 startup and every 6 hours.
+
+Outbound `scripts/send.js` prints a parseable receipt line to stdout after
+each send attempt:
+
+```text
+RECEIPT {"status":"sent","type":"text","chatId":"...","correlationId":"...","messageIds":["..."],"ts":"..."}
+```
 
 Message logs are stored in `~/zylos/components/zalo/logs/<chat_id>.log`.

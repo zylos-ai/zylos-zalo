@@ -28,7 +28,10 @@
 - **Chat on Zalo** — your AI agent lives in Zalo, supporting private and group conversations
 - **Dual delivery modes** — long polling (no public URL needed) or webhook for production (see [note](#webhook-mode))
 - **Zero-config start** — first message auto-binds you as admin, no setup wizards
-- **Media support** — send and receive photos, stickers, and typing indicators
+- **Access control** — owner, allowlist, open, and pairing-based DM policies
+- **Media support** — send images/stickers and receive photos, files, voice, video, GIFs, links, locations, and typing indicators
+- **Voice transcription** — local or OpenAI API transcription for inbound voice messages
+- **Operator diagnostics** — `doctor` checks token validity, delivery/webhook state, owner binding, and local permissions
 - **Zero npm dependencies** — uses only Node.js built-in APIs
 
 ## Getting Started
@@ -53,7 +56,10 @@ Just tell your Zylos agent what you need:
 |------|---------|
 | Add user to allowlist | "Add user xxx to zalo allowlist" |
 | Change DM policy | "Set zalo DM policy to open" |
+| Approve a DM request | "Approve Zalo DM user xxx" |
+| Set DM welcome | "Set Zalo DM welcome to hello" |
 | Check status | "Show zalo bot status" |
+| Run diagnostics | "Run Zalo doctor" |
 | Switch to webhook | "Switch zalo to webhook mode" |
 | Restart bot | "Restart zalo bot" |
 | Upgrade | "Upgrade zalo component" |
@@ -71,6 +77,7 @@ zylos uninstall zalo
 | Scenario | Bot Response |
 |----------|--------------|
 | Private chat (owner/allowlisted) | Responds via Claude |
+| Private chat (`dmPolicy: pairing`) | Unknown sender is queued for owner approval |
 | Allowed group message | Receives with context |
 | Owner in any allowed group | Always responds |
 | `groupPolicy: disabled` | All group messages blocked |
@@ -79,6 +86,14 @@ zylos uninstall zalo
 ## Webhook Mode
 
 Webhook delivery mode requires your app to be reviewed and approved by Zalo before they will deliver events to your endpoint. Until approved, **use polling mode** (the default) — it works out of the box with no public URL or Zalo approval needed.
+
+## Voice Messages
+
+Inbound voice messages can be transcribed when `voiceTranscription` is `auto`,
+`local`, or `api`. Local mode uses `~/zylos/bin/transcribe`, `whisper-cli`, or
+`whisper` with `WHISPER_MODEL`/`whisperModel`; API mode requires
+`OPENAI_API_KEY`. Set `voiceTranscription` to `disabled` to forward voice
+placeholders without transcription.
 
 ## Documentation
 
