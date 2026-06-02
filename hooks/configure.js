@@ -16,7 +16,8 @@ const DATA_DIR = path.join(HOME, 'zylos/components/zalo');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 
 const KEY_MAP = {
-  'ZALO_BOT_TOKEN': 'botToken'
+  'ZALO_BOT_TOKEN': 'botToken',
+  'ZALO_DELIVERY': 'delivery'
 };
 
 const DEFAULT_CONFIG = {
@@ -50,7 +51,8 @@ try {
 
   for (const [name, value] of Object.entries(collected)) {
     if (value === undefined || value === null || value === '') continue;
-    const key = KEY_MAP[name] || name.replace(/^ZALO_/, '').toLowerCase();
+    const key = KEY_MAP[name];
+    if (!key) continue;
     config[key] = value;
   }
 

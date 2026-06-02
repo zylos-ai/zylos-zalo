@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Validate `ZALO_API_BASE` from the environment with the same HTTPS rules as configured API bases.
+- Reject outbound photo URLs targeting private or loopback IPs.
+- Restrict configure-hook writes to explicitly supported install-time keys.
+- Ensure post-install default `config.json` is written with `0600` permissions.
+
 ### Fixed
 - Updated component docs to match the v0.1.4 runtime surface, including admin commands, DM pairing, DM welcome, voice transcription, owner fields, receipt output, and diagnostics.
 - Added `dm-pairing.json`, `seen-dm-users.json`, and `.owner-bound` to lifecycle preserve metadata so upgrades keep pairing state, first-contact welcome state, and durable owner-binding evidence.
+- Guard first-contact owner binding against concurrent DM races.
 
 ## [0.1.4] - 2026-06-02
 

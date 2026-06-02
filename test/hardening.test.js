@@ -384,6 +384,13 @@ test('startInternalServer source has bounded retry logic', () => {
   assert.ok(src.includes('portRetries >= MAX_PORT_RETRIES'), 'must check retry limit before exiting');
 });
 
+test('authorizeMessage guards first-contact owner binding against concurrent races', () => {
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('ownerBindingInProgress'), 'must track in-progress owner binding');
+  assert.ok(src.includes('Owner binding already in progress'), 'must reject concurrent first-contact bind attempts');
+  assert.ok(src.includes('finally'), 'must reset the in-progress flag after bind attempt');
+});
+
 // ─── Context eviction bounds (Z-8 LOW) ───
 
 test('context history evicts entries beyond the tracked chat limit', async () => {

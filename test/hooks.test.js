@@ -15,6 +15,36 @@ test('configure hook writes collected Zalo config values', async () => {
     const saved = JSON.parse(fs.readFileSync(path.join(home, 'zylos/components/zalo/config.json'), 'utf8'));
     assert.equal(saved.botToken, 'token-1');
     assert.equal(saved.delivery, 'webhook');
+    assert.equal(saved.owner, undefined);
+    assert.equal(saved.dmPolicy, undefined);
+    assert.equal(saved.groupPolicy, undefined);
+    assert.equal(saved.webhookSecret, undefined);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('configure hook ignores non-allowlisted collected keys', async () => {
+  const home = makeTempHome();
+  try {
+    const result = await runNode(['hooks/configure.js'], {
+      env: { HOME: home },
+      input: JSON.stringify({
+        ZALO_BOT_TOKEN: 'token-1',
+        ZALO_OWNER: 'attacker',
+        dmPolicy: 'open',
+        groupPolicy: 'open',
+        webhookSecret: 'secret',
+        owner: { user_id: 'attacker' }
+      })
+    });
+    assert.equal(result.code, 0, result.stderr);
+    const saved = JSON.parse(fs.readFileSync(path.join(home, 'zylos/components/zalo/config.json'), 'utf8'));
+    assert.equal(saved.botToken, 'token-1');
+    assert.equal(saved.owner, undefined);
+    assert.equal(saved.dmPolicy, undefined);
+    assert.equal(saved.groupPolicy, undefined);
+    assert.equal(saved.webhookSecret, undefined);
   } finally {
     cleanupDir(home);
   }
@@ -29,8 +59,10 @@ test('post-install creates data directories and default config', async () => {
     assert.equal(fs.existsSync(path.join(home, 'zylos/components/zalo/logs')), true);
     assert.equal(fs.existsSync(path.join(home, 'zylos/components/zalo/media')), true);
     assert.equal(fs.existsSync(path.join(home, 'zylos/components/zalo/typing')), true);
-    const saved = JSON.parse(fs.readFileSync(path.join(home, 'zylos/components/zalo/config.json'), 'utf8'));
+    const configPath = path.join(home, 'zylos/components/zalo/config.json');
+    const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     assert.deepEqual(saved, { enabled: true, delivery: 'polling' });
+    assert.equal(fs.statSync(configPath).mode & 0o777, 0o600);
   } finally {
     cleanupDir(home);
   }
