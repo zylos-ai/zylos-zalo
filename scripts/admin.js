@@ -116,6 +116,20 @@ const commands = {
     console.log('Run: pm2 restart zylos-zalo');
   },
 
+  doctor: async () => {
+    const config = loadConfig();
+    const { runDoctor, formatDoctorReport } = await import('../src/lib/doctor.js');
+    const results = await runDoctor(config);
+    console.log(formatDoctorReport(results));
+    const failed = results.filter(r => !r.ok);
+    if (failed.length) {
+      console.log(`\n${failed.length} check(s) need attention.`);
+      process.exitCode = 1;
+    } else {
+      console.log('\nAll checks passed.');
+    }
+  },
+
   help: () => {
     console.log(`
 zylos-zalo admin CLI
@@ -132,6 +146,9 @@ Commands:
   Bot Settings:
   set-delivery <polling|webhook>         Set message delivery mode
   show-owner                             Show current owner
+
+  Diagnostics:
+  doctor                                 Run operator health checks (token, API, webhook, perms)
 
   help                                   Show this help
 
@@ -150,7 +167,13 @@ const args = process.argv.slice(2);
 const command = args[0] || 'help';
 
 if (commands[command]) {
-  commands[command](...args.slice(1));
+  const result = commands[command](...args.slice(1));
+  if (result && typeof result.then === 'function') {
+    result.catch(err => {
+      console.error(`[zalo] ${err.message}`);
+      process.exit(1);
+    });
+  }
 } else {
   console.error(`Unknown command: ${command}`);
   commands.help();
