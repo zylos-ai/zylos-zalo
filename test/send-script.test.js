@@ -195,3 +195,61 @@ test('send script uses effective port from runtime endpoint file', async () => {
     cleanupDir(home);
   }
 });
+
+function parseReceipt(stdout) {
+  const line = stdout.split('\n').find(l => l.startsWith('RECEIPT '));
+  return line ? JSON.parse(line.slice('RECEIPT '.length)) : null;
+}
+
+test('send script emits a structured receipt with message ids on text send', async () => {
+  const home = makeTempHome();
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1|req:req-1',
+      'hello world'
+    ], { env: { HOME: home } });
+
+    assert.equal(result.code, 0, result.stderr);
+    const receipt = parseReceipt(result.stdout);
+    assert.ok(receipt, 'expected a RECEIPT line in stdout');
+    assert.equal(receipt.status, 'sent');
+    assert.equal(receipt.type, 'text');
+    assert.equal(receipt.chatId, 'chat-1');
+    assert.equal(receipt.correlationId, 'req-1');
+    assert.equal(receipt.chunks, 1);
+    assert.deepEqual(receipt.messageIds, ['mock-message-id']);
+    assert.equal(typeof receipt.ts, 'number');
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script emits a failed receipt and exits non-zero on send error', async () => {
+  const home = makeTempHome();
+  // Local image path is rejected before any API call → triggers the failure path.
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1|req:req-9',
+      '[MEDIA:image]/tmp/local.jpg'
+    ], { env: { HOME: home } });
+
+    assert.equal(result.code, 1);
+    const receipt = parseReceipt(result.stdout);
+    assert.ok(receipt, 'expected a RECEIPT line even on failure');
+    assert.equal(receipt.status, 'failed');
+    assert.equal(receipt.correlationId, 'req-9');
+    assert.match(receipt.error, /public HTTP\(S\) image URL/);
+  } finally {
+    cleanupDir(home);
+  }
+});
