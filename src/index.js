@@ -49,6 +49,7 @@ const webhookDeduper = createDeduper({
   ttlMs: config.webhook?.dedupWindowMs || 5 * 60 * 1000,
   maxSize: config.webhook?.dedupMaxEntries || 1000
 });
+const inboundUpdateKeys = new Set();
 const webhookRateLimiter = createRateLimiter({
   windowMs: config.webhook?.rateLimitWindowMs || 60 * 1000,
   max: config.webhook?.rateLimitMax || 120
@@ -231,7 +232,19 @@ async function handleUpdate(update) {
 function isDuplicateUpdate(update) {
   const key = getUpdateDedupKey(update);
   if (!key) return false;
+  if (inboundUpdateKeys.has(key)) return true;
+  inboundUpdateKeys.add(key);
+  while (inboundUpdateKeys.size > (config.webhook?.dedupMaxEntries || 1000)) {
+    inboundUpdateKeys.delete(inboundUpdateKeys.values().next().value);
+  }
   return webhookDeduper.isDuplicate(key);
+}
+
+function advancePollingOffset(update) {
+  const updateId = Number(update?.update_id);
+  if (Number.isSafeInteger(updateId)) {
+    pollingOffset = Math.max(pollingOffset || 0, updateId + 1);
+  }
 }
 
 function getMessageInfo(update) {
@@ -381,30 +394,15 @@ async function handleTextMessage(update) {
 }
 
 async function handleImageMessage(update) {
-  config = loadConfig();
-
-  const info = getMessageInfo(update);
-  const imageUrl = info.message.photo_url || info.message.url || info.message.thumb || '';
-  const caption = info.message.caption || '';
-
-  if (!info.chatId) return;
-  if (!await authorizeMessage(info)) return;
-
-  let mediaPath = null;
-  let text = caption || '[sent an image]';
-  if (imageUrl) {
-    try {
-      const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
-      const saved = await downloadMedia(imageUrl, { messageId: info.messageId, maxBytes, fallbackExt: '.img' });
-      mediaPath = saved?.path || null;
-      if (!caption) text = `[sent an image] ${imageUrl}`;
-    } catch (err) {
-      console.error(`[zalo] Failed to download image ${info.messageId}: ${err.message}`);
-      text = caption || `[sent an image, download failed] ${imageUrl}`;
-    }
-  }
-
-  processAuthorizedMessage({ info, text, mediaPath });
+  await handleDownloadedPlaceholder(update, {
+    label: 'image',
+    urlKeys: ['photo_url', 'image_url', 'url', 'thumb', 'media_url'],
+    fallbackExt: '.img',
+    captionKeys: ['caption'],
+    textForUrl: (url) => `[sent an image] ${url}`,
+    textWithoutUrl: '[sent an image]',
+    textDownloadFailed: (url) => `[sent an image, download failed] ${url}`,
+  });
 }
 
 function firstString(...values) {
@@ -435,6 +433,7 @@ async function handleDownloadedPlaceholder(update, {
   label,
   urlKeys,
   fallbackExt,
+  captionKeys = [],
   textForUrl = (url) => `[sent a ${label}] ${url}`,
   textWithoutUrl = `[sent a ${label}]`,
   textDownloadFailed = (url) => `[sent a ${label}, download failed] ${url}`,
@@ -446,17 +445,18 @@ async function handleDownloadedPlaceholder(update, {
   if (!await authorizeMessage(info)) return;
 
   const url = getMediaUrl(info.message, urlKeys);
+  const caption = firstString(...captionKeys.map((key) => info.message?.[key]));
   let mediaPath = null;
-  let text = url ? textForUrl(url, info.message) : textWithoutUrl;
+  let text = caption || (url ? textForUrl(url, info.message) : textWithoutUrl);
   if (url) {
     try {
       const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
       const saved = await downloadMedia(url, { messageId: info.messageId, maxBytes, fallbackExt });
       mediaPath = saved?.path || null;
-      if (!saved) text = textDownloadFailed(url, info.message);
+      if (!saved) text = caption || textDownloadFailed(url, info.message);
     } catch (err) {
       console.error(`[zalo] Failed to download ${label} ${info.messageId}: ${err.message}`);
-      text = textDownloadFailed(url, info.message);
+      text = caption || textDownloadFailed(url, info.message);
     }
   }
 
@@ -589,14 +589,19 @@ async function runPolling() {
 
   while (!stopped) {
     try {
-      const update = await getUpdates(botToken, pollingOffset, 10, 100);
+      const result = await getUpdates(botToken, pollingOffset, 10, 100);
       if (stopped) break;
 
-      if (update) {
-        if (update.update_id !== undefined) {
-          pollingOffset = update.update_id + 1;
+      const updates = Array.isArray(result) ? result : (result ? [result] : []);
+      for (const update of updates) {
+        if (stopped) break;
+        try {
+          if (!isDuplicateUpdate(update)) {
+            await handleUpdate(update);
+          }
+        } finally {
+          advancePollingOffset(update);
         }
-        await handleUpdate(update);
       }
     } catch (err) {
       if (stopped) break;
@@ -754,7 +759,7 @@ function cleanupInternalRuntimeFiles() {
 }
 
 function startInternalServer(portOverride) {
-  const port = portOverride || config.internal_port || 3462;
+  let port = portOverride || config.internal_port || 3462;
   const MAX_PORT_RETRIES = 5;
   let portRetries = 0;
 
@@ -769,11 +774,13 @@ function startInternalServer(portOverride) {
   internalServer.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       portRetries++;
-      if (portRetries >= MAX_PORT_RETRIES) {
+      if (portRetries > MAX_PORT_RETRIES) {
         console.error(`[zalo] Port ${port} in use after ${MAX_PORT_RETRIES} retries, exiting`);
         process.exit(1);
       }
-      console.error(`[zalo] Port ${port} in use, retry ${portRetries}/${MAX_PORT_RETRIES} in 3s`);
+      const nextPort = port + 1;
+      console.error(`[zalo] Port ${port} in use, retry ${portRetries}/${MAX_PORT_RETRIES} on ${nextPort} in 3s`);
+      port = nextPort;
       setTimeout(() => internalServer.listen(port, '127.0.0.1'), 3000);
     }
   });
