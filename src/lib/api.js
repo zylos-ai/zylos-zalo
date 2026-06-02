@@ -5,11 +5,26 @@
  * All methods are POST with JSON body. URL pattern: /bot{TOKEN}/{method}
  */
 
+import { isPrivateIp } from './ip.js';
+
 const DEFAULT_ZALO_API_BASE = 'https://bot-api.zaloplatforms.com';
 const DEFAULT_TIMEOUT = 30000;
 const POLLING_BUFFER = 5000;
 
-let apiBaseUrl = process.env.ZALO_API_BASE || DEFAULT_ZALO_API_BASE;
+let apiBaseUrl = DEFAULT_ZALO_API_BASE;
+
+export class ZaloApiError extends Error {
+  constructor(message, code, response) {
+    super(message);
+    this.name = 'ZaloApiError';
+    this.code = code;
+    this.response = response;
+  }
+
+  get isPollingTimeout() {
+    return this.code === 408;
+  }
+}
 
 export function setApiBaseUrl(baseUrl) {
   if (!baseUrl) {
@@ -31,17 +46,8 @@ export function getApiBaseUrl() {
   return apiBaseUrl;
 }
 
-export class ZaloApiError extends Error {
-  constructor(message, code, response) {
-    super(message);
-    this.name = 'ZaloApiError';
-    this.code = code;
-    this.response = response;
-  }
-
-  get isPollingTimeout() {
-    return this.code === 408;
-  }
+if (process.env.ZALO_API_BASE) {
+  setApiBaseUrl(process.env.ZALO_API_BASE);
 }
 
 async function apiCall(token, method, body = {}, timeoutMs = DEFAULT_TIMEOUT) {
@@ -86,6 +92,9 @@ function validatePhotoUrl(photoUrl) {
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
     throw new ZaloApiError('Zalo photo URL must use HTTP or HTTPS', 0, null);
+  }
+  if (isPrivateIp(parsed.hostname)) {
+    throw new ZaloApiError('Zalo photo URL must not target private or loopback IPs', 0, null);
   }
 }
 

@@ -62,6 +62,20 @@ test('api base URL can be configured', async () => {
   }
 });
 
+test('api base URL from environment uses HTTPS validation', async () => {
+  const previous = process.env.ZALO_API_BASE;
+  process.env.ZALO_API_BASE = 'http://bot-api.zaloplatforms.com';
+  try {
+    await assert.rejects(
+      () => freshImport('src/lib/api.js'),
+      /Zalo API base URL must use HTTPS/
+    );
+  } finally {
+    if (previous === undefined) delete process.env.ZALO_API_BASE;
+    else process.env.ZALO_API_BASE = previous;
+  }
+});
+
 test('api converts Zalo and HTTP failures into ZaloApiError', async () => {
   const restore = installFetch(async () =>
     new Response(JSON.stringify({ error_code: 401, description: 'bad token' }), { status: 200 })
@@ -113,6 +127,14 @@ test('sendPhoto rejects non-http or malformed URLs before fetch', async () => {
     assert.throws(
       () => api.sendPhoto('token-1', 'chat-1', 'not a url'),
       /absolute HTTP or HTTPS URL/
+    );
+    assert.throws(
+      () => api.sendPhoto('token-1', 'chat-1', 'https://127.0.0.1/a.png'),
+      /private or loopback/
+    );
+    assert.throws(
+      () => api.sendPhoto('token-1', 'chat-1', 'https://[::ffff:10.0.0.1]/a.png'),
+      /private or loopback/
     );
     assert.equal(calls, 0);
   } finally {

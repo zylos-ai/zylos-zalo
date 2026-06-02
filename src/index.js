@@ -57,6 +57,7 @@ const webhookRateLimiter = createRateLimiter({
 let botInfo = null;
 let stopped = false;
 let pollingOffset = undefined;
+let ownerBindingInProgress = false;
 setApiBaseUrl(config.apiBaseUrl);
 let transcriptionProvider = getTranscriptionProvider(config.voiceTranscription, process.env, { modelPath: config.whisperModel || process.env.WHISPER_MODEL });
 let VOICE_ENABLED = transcriptionProvider.available;
@@ -274,8 +275,17 @@ async function authorizeMessage(info) {
       console.log(`[zalo] Ignoring group message before owner is bound: ${info.chatId}`);
       return false;
     }
-    if (bindOwner(config, info.senderId, info.userName)) {
-      sendMessage(botToken, info.chatId, 'You are now the admin of this bot.').catch(() => {});
+    if (ownerBindingInProgress) {
+      console.log(`[zalo] Owner binding already in progress, ignoring first-contact race from ${info.senderId}`);
+      return false;
+    }
+    ownerBindingInProgress = true;
+    try {
+      if (bindOwner(config, info.senderId, info.userName)) {
+        sendMessage(botToken, info.chatId, 'You are now the admin of this bot.').catch(() => {});
+      }
+    } finally {
+      ownerBindingInProgress = false;
     }
     return false;
   }
