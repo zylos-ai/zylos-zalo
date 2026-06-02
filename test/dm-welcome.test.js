@@ -62,3 +62,17 @@ test('admin CLI sets and shows DM welcome message', async () => {
     assert.match(result.stdout, /Hello there/);
   });
 });
+
+test('admin CLI clears DM welcome message', async () => {
+  await withTempHome(async (home) => {
+    const configPath = path.join(home, 'zylos/components/zalo/config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ botToken: 'token', dmWelcomeMessage: 'Welcome' }));
+
+    const result = await runNode(['scripts/admin.js', 'clear-dm-welcome'], { env: { HOME: home } });
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /DM welcome message disabled/);
+
+    const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    assert.equal(saved.dmWelcomeMessage, '');
+  });
+});

@@ -401,6 +401,7 @@ async function handleDownloadedPlaceholder(update, {
       const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
       const saved = await downloadMedia(url, { messageId: info.messageId, maxBytes, fallbackExt });
       mediaPath = saved?.path || null;
+      if (!saved) text = textDownloadFailed(url, info.message);
     } catch (err) {
       console.error(`[zalo] Failed to download ${label} ${info.messageId}: ${err.message}`);
       text = textDownloadFailed(url, info.message);

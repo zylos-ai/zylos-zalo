@@ -40,9 +40,11 @@ export function getTranscriptionProvider(mode = 'auto', env = process.env, { mod
   }
   if ((normalized === 'auto' || normalized === 'local') && commandExists('whisper-cli')) {
     if (modelPath) return { available: true, provider: 'whisper.cpp', command: 'whisper-cli', modelPath };
+    console.warn('[zalo] whisper-cli found but WHISPER_MODEL not set — skipping');
   }
   if ((normalized === 'auto' || normalized === 'local') && commandExists('whisper')) {
     if (modelPath) return { available: true, provider: 'whisper.cpp', command: 'whisper', modelPath };
+    console.warn('[zalo] whisper found but WHISPER_MODEL not set — skipping');
   }
   if ((normalized === 'auto' || normalized === 'api') && env.OPENAI_API_KEY) {
     return { available: true, provider: 'openai-api' };

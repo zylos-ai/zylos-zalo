@@ -32,3 +32,8 @@ test('voice handler forwards transcript and transcription failure placeholders',
   assert.ok(code.includes('[Voice] ${transcript}'), 'missing voice transcript forwarding');
   assert.ok(code.includes('[sent a voice message, transcription failed]'), 'missing voice failure placeholder');
 });
+
+test('downloaded placeholder treats blocked downloads as failed', () => {
+  const code = src();
+  assert.ok(code.includes('if (!saved) text = textDownloadFailed'), 'missing null-download failure path');
+});
