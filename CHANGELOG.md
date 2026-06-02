@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-02
+
+### Added
+- First-contact DM welcome message with `set-dm-welcome` / `show-dm-welcome` / `clear-dm-welcome` admin commands (#2).
+- Inbound file/document receive and forwarding to C4 (#2).
+- Voice message transcription (speech-to-text) for inbound audio (#2).
+- Operator `doctor` diagnostics command: token validity via `getMe`, webhook/delivery sanity, owner binding, and config/data-dir permission checks (#3).
+- Structured outbound delivery receipts from `send.js` — a parseable `RECEIPT {status,type,chatId,correlationId,messageIds,chunks?,error?,ts}` line for C4 correlation (#4).
+- DM pairing policy (`dmPolicy: "pairing"`): unknown senders are queued for owner approval; new `dm-pending` / `dm-approve` / `dm-deny` admin commands and C4 owner notification (#5).
+
 ## [0.1.3] - 2026-05-27
 
 ### Fixed
