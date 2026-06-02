@@ -58,6 +58,33 @@ test('config token in config.json takes precedence over env fallback', async () 
   });
 });
 
+test('loadConfig reuses cached config when file mtime is unchanged', async () => {
+  await withTempHome(async (home) => {
+    const configPath = path.join(home, 'zylos/components/zalo/config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ botToken: 'tok-1' }), { mode: 0o600 });
+
+    const { loadConfig } = await freshImport('src/lib/config.js');
+    const originalReadFileSync = fs.readFileSync;
+    let configReads = 0;
+    fs.readFileSync = function patchedReadFileSync(filePath, ...args) {
+      if (String(filePath) === configPath) configReads += 1;
+      return originalReadFileSync.call(this, filePath, ...args);
+    };
+
+    try {
+      assert.equal(loadConfig().botToken, 'tok-1');
+      assert.equal(loadConfig().botToken, 'tok-1');
+      assert.equal(configReads, 1);
+
+      fs.writeFileSync(configPath, JSON.stringify({ botToken: 'tok-2' }), { mode: 0o600 });
+      assert.equal(loadConfig().botToken, 'tok-2');
+      assert.equal(configReads, 2);
+    } finally {
+      fs.readFileSync = originalReadFileSync;
+    }
+  });
+});
+
 test('DEFAULT_CONFIG includes logging and retention defaults', async () => {
   const { DEFAULT_CONFIG } = await freshImport('src/lib/config.js');
   assert.equal(DEFAULT_CONFIG.logging.maxLogBytes, 512 * 1024);

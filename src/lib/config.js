@@ -49,7 +49,12 @@ export const DEFAULT_CONFIG = {
 
 function loadDotEnv() {
   try {
-    if (!fs.existsSync(ENV_PATH)) return;
+    const stamp = fileStamp(ENV_PATH);
+    if (!stamp) {
+      lastEnvStamp = null;
+      return;
+    }
+    if (stamp === lastEnvStamp) return;
     const content = fs.readFileSync(ENV_PATH, 'utf8');
     for (const line of content.split(/\r?\n/)) {
       const trimmed = line.trim();
@@ -67,6 +72,7 @@ function loadDotEnv() {
       }
       process.env[key] = value;
     }
+    lastEnvStamp = stamp;
   } catch (err) {
     console.warn(`[zalo] Failed to load ${ENV_PATH}: ${err.message}`);
   }
@@ -85,8 +91,19 @@ function deepMerge(defaults, overrides) {
 }
 
 let lastGoodConfig = null;
+let lastConfigStamp = null;
+let lastEnvStamp = null;
 
 const OWNER_MARKER_PATH = path.join(DATA_DIR, '.owner-bound');
+
+function fileStamp(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return null;
+  }
+}
 
 function hasPriorOwnership() {
   if (fs.existsSync(OWNER_MARKER_PATH)) return true;
@@ -104,7 +121,14 @@ export function writeOwnerMarker() {
 export function loadConfig() {
   loadDotEnv();
   try {
-    if (fs.existsSync(CONFIG_PATH)) {
+    const stamp = fileStamp(CONFIG_PATH);
+    if (stamp) {
+      if (lastGoodConfig && stamp === lastConfigStamp) {
+        if (lastGoodConfig.owner?.user_id && !fs.existsSync(OWNER_MARKER_PATH)) {
+          writeOwnerMarker();
+        }
+        return lastGoodConfig;
+      }
       const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
       const config = deepMerge(DEFAULT_CONFIG, parsed);
       if (!config.botToken && process.env.ZALO_BOT_TOKEN) {
@@ -114,8 +138,10 @@ export function loadConfig() {
         writeOwnerMarker();
       }
       lastGoodConfig = config;
+      lastConfigStamp = stamp;
       return config;
     }
+    lastConfigStamp = null;
     if (lastGoodConfig) {
       console.warn(`[zalo] Config file not found, retaining last-known-good config`);
       return lastGoodConfig;
@@ -150,6 +176,8 @@ export function saveConfig(config) {
     fs.writeFileSync(tmp, JSON.stringify(config, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, CONFIG_PATH);
     try { fs.chmodSync(CONFIG_PATH, 0o600); } catch {}
+    lastGoodConfig = config;
+    lastConfigStamp = fileStamp(CONFIG_PATH);
     return true;
   } catch (err) {
     console.error(`[zalo] Failed to save config: ${err.message}`);

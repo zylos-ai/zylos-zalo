@@ -23,7 +23,7 @@ import {
 import { downloadMedia, cleanupOldMedia } from './lib/media.js';
 import { loadSeenDmUsers, sendDmWelcomeIfFirstSeen } from './lib/dm-welcome.js';
 import {
-  getPairingStatus, markPairingPending, savePairingState, buildPairingNotification
+  loadPairingState, getPairingStatus, markPairingPending, savePairingState, buildPairingNotification
 } from './lib/dm-pairing.js';
 import { getTranscriptionProvider, transcribeAudio } from './lib/transcribe.js';
 import {
@@ -58,6 +58,8 @@ let botInfo = null;
 let stopped = false;
 let pollingOffset = undefined;
 let ownerBindingInProgress = false;
+let mediaCleanupInterval = null;
+const c4RetryTimers = new Set();
 setApiBaseUrl(config.apiBaseUrl);
 let transcriptionProvider = getTranscriptionProvider(config.voiceTranscription, process.env, { modelPath: config.whisperModel || process.env.WHISPER_MODEL });
 let VOICE_ENABLED = transcriptionProvider.available;
@@ -73,7 +75,7 @@ function parseC4Response(stdout) {
 }
 
 function sendToC4(source, endpoint, content, { onReject, onFail } = {}) {
-  if (!content) return;
+  if (!content || stopped) return;
   const args = [
     C4_RECEIVE,
     '--channel', source,
@@ -93,9 +95,13 @@ function sendToC4(source, endpoint, content, { onReject, onFail } = {}) {
       if (onReject) onReject(response.error.message);
       return;
     }
+    if (stopped) return;
     console.warn(`[zalo] C4 send failed, retrying in 2s: ${error.message}`);
-    setTimeout(() => {
+    const retryTimer = setTimeout(() => {
+      c4RetryTimers.delete(retryTimer);
+      if (stopped) return;
       execFile(process.execPath, args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 }, (retryError, retryStdout) => {
+        if (stopped) return;
         if (!retryError) return;
         const retryResponse = parseC4Response(retryStdout);
         if (retryResponse?.ok === false && retryResponse.error?.message && onReject) {
@@ -106,6 +112,7 @@ function sendToC4(source, endpoint, content, { onReject, onFail } = {}) {
         if (onFail) onFail();
       });
     }, 2000);
+    c4RetryTimers.add(retryTimer);
   });
 }
 
@@ -253,14 +260,15 @@ function notifyPairingRequest(info) {
 // Pairing DM policy: unknown senders are recorded pending + the owner is
 // notified (via C4); pending/denied senders are dropped silently to avoid spam.
 function handlePairingRequest(info) {
-  const status = getPairingStatus(info.senderId);
+  const state = loadPairingState();
+  const status = getPairingStatus(info.senderId, state);
   if (status !== 'unknown') return;
-  const state = markPairingPending({
+  markPairingPending({
     userId: info.senderId,
     userName: info.userName,
     chatId: info.chatId,
     firstMessage: info.message?.text || '',
-  });
+  }, state);
   savePairingState(state);
   notifyPairingRequest(info);
   sendMessage(botToken, info.chatId,
@@ -487,6 +495,7 @@ async function handleVoiceMessage(update) {
         const transcript = await transcribeAudio(mediaPath, {
           mode: config.voiceTranscription,
           modelPath: config.whisperModel || process.env.WHISPER_MODEL,
+          provider: transcriptionProvider,
         });
         text = `[Voice] ${transcript}`;
       } else {
@@ -786,7 +795,8 @@ async function main() {
 
   const mediaMaxAgeMs = (config.retention?.mediaMaxAgeDays || 7) * 24 * 60 * 60 * 1000;
   cleanupOldMedia(mediaMaxAgeMs);
-  setInterval(() => cleanupOldMedia(mediaMaxAgeMs), 6 * 60 * 60 * 1000);
+  mediaCleanupInterval = setInterval(() => cleanupOldMedia(mediaMaxAgeMs), 6 * 60 * 60 * 1000);
+  mediaCleanupInterval.unref?.();
 
   if (!config.enabled) {
     console.log('[zalo] Component disabled in config, exiting.');
@@ -814,6 +824,9 @@ function shutdown() {
   stopped = true;
 
   clearInterval(typingPollInterval);
+  if (mediaCleanupInterval) clearInterval(mediaCleanupInterval);
+  for (const timer of c4RetryTimers) clearTimeout(timer);
+  c4RetryTimers.clear();
   if (typingWatcher) typingWatcher.close();
   for (const [, state] of activeTyping) {
     clearInterval(state.interval);

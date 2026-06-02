@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated component docs to match the v0.1.4 runtime surface, including admin commands, DM pairing, DM welcome, voice transcription, owner fields, receipt output, and diagnostics.
 - Added `dm-pairing.json`, `seen-dm-users.json`, and `.owner-bound` to lifecycle preserve metadata so upgrades keep pairing state, first-contact welcome state, and durable owner-binding evidence.
 - Guard first-contact owner binding against concurrent DM races.
+- Clear media cleanup and C4 retry timers during shutdown.
+- Avoid synchronous audio file reads on the OpenAI transcription path.
+- Cache config and `.env` reads by file mtime, reuse loaded DM pairing state per request, reuse resolved voice transcription providers, and throttle webhook dedup sweeps.
 
 ## [0.1.4] - 2026-06-02
 
