@@ -20,7 +20,9 @@ import {
 import {
   logAndRecord, ensureReplay, getHistory, formatMessage
 } from './lib/context.js';
-import { downloadImage, cleanupOldMedia } from './lib/media.js';
+import { downloadMedia, cleanupOldMedia } from './lib/media.js';
+import { loadSeenDmUsers, sendDmWelcomeIfFirstSeen } from './lib/dm-welcome.js';
+import { getTranscriptionProvider, transcribeAudio } from './lib/transcribe.js';
 import {
   getMe, getUpdates, sendMessage, sendChatAction,
   setWebhook, deleteWebhook, ZaloApiError, setApiBaseUrl
@@ -53,6 +55,9 @@ let botInfo = null;
 let stopped = false;
 let pollingOffset = undefined;
 setApiBaseUrl(config.apiBaseUrl);
+let transcriptionProvider = getTranscriptionProvider(config.voiceTranscription, process.env, { modelPath: config.whisperModel || process.env.WHISPER_MODEL });
+let VOICE_ENABLED = transcriptionProvider.available;
+const seenDmUsers = loadSeenDmUsers();
 
 // ============================================================
 // C4 bridge
@@ -190,11 +195,23 @@ async function handleUpdate(update) {
   if (!eventName) return;
 
   if (eventName === 'message.text.received') {
-    handleTextMessage(update);
-  } else if (eventName === 'message.image.received') {
+    await handleTextMessage(update);
+  } else if (eventName === 'message.image.received' || eventName === 'user_send_image') {
     await handleImageMessage(update);
-  } else if (eventName === 'message.sticker.received') {
-    handleStickerMessage(update);
+  } else if (eventName === 'message.file.received' || eventName === 'user_send_file') {
+    await handleFileMessage(update);
+  } else if (eventName === 'message.audio.received' || eventName === 'user_send_audio') {
+    await handleVoiceMessage(update);
+  } else if (eventName === 'message.video.received' || eventName === 'user_send_video') {
+    await handleVideoMessage(update);
+  } else if (eventName === 'message.gif.received' || eventName === 'user_send_gif') {
+    await handleGifMessage(update);
+  } else if (eventName === 'message.link.received' || eventName === 'user_send_link') {
+    await handleLinkMessage(update);
+  } else if (eventName === 'message.location.received' || eventName === 'user_send_location') {
+    await handleLocationMessage(update);
+  } else if (eventName === 'message.sticker.received' || eventName === 'user_send_sticker') {
+    await handleStickerMessage(update);
   } else {
     console.log(`[zalo] Unhandled event: ${eventName}`);
   }
@@ -219,7 +236,7 @@ function getMessageInfo(update) {
   return { message, sender, chat, isGroup, chatId, senderId, userName, groupName, messageId };
 }
 
-function authorizeMessage(info) {
+async function authorizeMessage(info) {
   if (!info.chatId || !info.senderId) return false;
 
   if (!hasOwner(config)) {
@@ -249,6 +266,14 @@ function authorizeMessage(info) {
     sendMessage(botToken, info.chatId, "Sorry, I'm not available. Please ask my admin for access.").catch(() => {});
     return false;
   }
+
+  await sendDmWelcomeIfFirstSeen({
+    send: (chatId, message) => sendMessage(botToken, chatId, message),
+    userId: info.senderId,
+    chatId: info.chatId,
+    message: config.dmWelcomeMessage,
+    seenUsers: seenDmUsers,
+  });
 
   return true;
 }
@@ -292,14 +317,14 @@ function processAuthorizedMessage({ info, text, mediaPath }) {
   });
 }
 
-function handleTextMessage(update) {
+async function handleTextMessage(update) {
   config = loadConfig();
 
   const info = getMessageInfo(update);
   const text = info.message.text || '';
 
   if (!info.chatId || !text) return;
-  if (!authorizeMessage(info)) return;
+  if (!await authorizeMessage(info)) return;
   processAuthorizedMessage({ info, text, mediaPath: null });
 }
 
@@ -311,14 +336,14 @@ async function handleImageMessage(update) {
   const caption = info.message.caption || '';
 
   if (!info.chatId) return;
-  if (!authorizeMessage(info)) return;
+  if (!await authorizeMessage(info)) return;
 
   let mediaPath = null;
   let text = caption || '[sent an image]';
   if (imageUrl) {
     try {
       const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
-      const saved = await downloadImage(imageUrl, { messageId: info.messageId, maxBytes });
+      const saved = await downloadMedia(imageUrl, { messageId: info.messageId, maxBytes, fallbackExt: '.img' });
       mediaPath = saved?.path || null;
       if (!caption) text = `[sent an image] ${imageUrl}`;
     } catch (err) {
@@ -330,12 +355,166 @@ async function handleImageMessage(update) {
   processAuthorizedMessage({ info, text, mediaPath });
 }
 
-function handleStickerMessage(update) {
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+}
+
+function getMediaUrl(message, keys) {
+  for (const key of keys) {
+    const value = message?.[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  const attachment = Array.isArray(message?.attachments) ? message.attachments[0] : null;
+  if (attachment) {
+    return firstString(attachment.url, attachment.file_url, attachment.media_url, attachment.href);
+  }
+  return '';
+}
+
+function getFilename(message, fallback = 'file') {
+  return firstString(message.file_name, message.filename, message.name, message.title) || fallback;
+}
+
+async function handleDownloadedPlaceholder(update, {
+  label,
+  urlKeys,
+  fallbackExt,
+  textForUrl = (url) => `[sent a ${label}] ${url}`,
+  textWithoutUrl = `[sent a ${label}]`,
+  textDownloadFailed = (url) => `[sent a ${label}, download failed] ${url}`,
+}) {
   config = loadConfig();
 
   const info = getMessageInfo(update);
   if (!info.chatId) return;
-  if (!authorizeMessage(info)) return;
+  if (!await authorizeMessage(info)) return;
+
+  const url = getMediaUrl(info.message, urlKeys);
+  let mediaPath = null;
+  let text = url ? textForUrl(url, info.message) : textWithoutUrl;
+  if (url) {
+    try {
+      const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
+      const saved = await downloadMedia(url, { messageId: info.messageId, maxBytes, fallbackExt });
+      mediaPath = saved?.path || null;
+    } catch (err) {
+      console.error(`[zalo] Failed to download ${label} ${info.messageId}: ${err.message}`);
+      text = textDownloadFailed(url, info.message);
+    }
+  }
+
+  processAuthorizedMessage({ info, text, mediaPath });
+}
+
+async function handleFileMessage(update) {
+  await handleDownloadedPlaceholder(update, {
+    label: 'file',
+    urlKeys: ['file_url', 'url', 'href', 'media_url'],
+    fallbackExt: '.bin',
+    textForUrl: (url, message) => `[sent a file: ${getFilename(message)}] ${url}`,
+    textWithoutUrl: '[sent a file]',
+    textDownloadFailed: (url, message) => `[sent a file: ${getFilename(message)}, download failed] ${url}`,
+  });
+}
+
+async function handleVoiceMessage(update) {
+  config = loadConfig();
+  transcriptionProvider = getTranscriptionProvider(config.voiceTranscription, process.env, { modelPath: config.whisperModel || process.env.WHISPER_MODEL });
+  VOICE_ENABLED = transcriptionProvider.available;
+
+  const info = getMessageInfo(update);
+  if (!info.chatId) return;
+  if (!await authorizeMessage(info)) return;
+
+  const audioUrl = getMediaUrl(info.message, ['audio_url', 'voice_url', 'file_url', 'url', 'media_url']);
+  let mediaPath = null;
+  let text = '[sent a voice message]';
+  if (audioUrl) {
+    try {
+      const maxBytes = (config.message?.mediaMaxMb || config.mediaMaxMb || 10) * 1024 * 1024;
+      const saved = await downloadMedia(audioUrl, { messageId: info.messageId, maxBytes, fallbackExt: '.audio' });
+      mediaPath = saved?.path || null;
+      if (mediaPath && VOICE_ENABLED) {
+        const transcript = await transcribeAudio(mediaPath, {
+          mode: config.voiceTranscription,
+          modelPath: config.whisperModel || process.env.WHISPER_MODEL,
+        });
+        text = `[Voice] ${transcript}`;
+      } else {
+        text = '[sent a voice message, transcription unavailable]';
+      }
+    } catch (err) {
+      console.error(`[zalo] Failed to process voice ${info.messageId}: ${err.message}`);
+      text = '[sent a voice message, transcription failed]';
+    }
+  }
+
+  processAuthorizedMessage({ info, text, mediaPath });
+}
+
+async function handleVideoMessage(update) {
+  await handleDownloadedPlaceholder(update, {
+    label: 'video',
+    urlKeys: ['video_url', 'file_url', 'url', 'media_url'],
+    fallbackExt: '.mp4',
+    textForUrl: (url) => `[sent a video] ${url}`,
+    textWithoutUrl: '[sent a video]',
+    textDownloadFailed: (url) => `[sent a video, download failed] ${url}`,
+  });
+}
+
+async function handleGifMessage(update) {
+  await handleDownloadedPlaceholder(update, {
+    label: 'GIF',
+    urlKeys: ['gif_url', 'image_url', 'photo_url', 'file_url', 'url', 'media_url'],
+    fallbackExt: '.gif',
+    textForUrl: (url) => `[sent a GIF] ${url}`,
+    textWithoutUrl: '[sent a GIF]',
+    textDownloadFailed: (url) => `[sent a GIF, download failed] ${url}`,
+  });
+}
+
+async function handleLinkMessage(update) {
+  config = loadConfig();
+
+  const info = getMessageInfo(update);
+  if (!info.chatId) return;
+  if (!await authorizeMessage(info)) return;
+
+  const url = firstString(info.message.url, info.message.link_url, info.message.href, info.message.link?.url);
+  const title = firstString(info.message.title, info.message.link?.title, info.message.description);
+  const text = url
+    ? `[shared a link: ${url}]${title ? ` ${title}` : ''}`
+    : (title ? `[shared a link] ${title}` : '[shared a link]');
+  processAuthorizedMessage({ info, text, mediaPath: null });
+}
+
+async function handleLocationMessage(update) {
+  config = loadConfig();
+
+  const info = getMessageInfo(update);
+  if (!info.chatId) return;
+  if (!await authorizeMessage(info)) return;
+
+  const lat = firstString(info.message.latitude, info.message.lat, info.message.location?.latitude, info.message.location?.lat);
+  const lng = firstString(info.message.longitude, info.message.lng, info.message.lon, info.message.location?.longitude, info.message.location?.lng, info.message.location?.lon);
+  const address = firstString(info.message.address, info.message.location?.address, info.message.title);
+  const text = lat && lng
+    ? `[shared a location: ${lat}, ${lng}]${address ? ` ${address}` : ''}`
+    : (address ? `[shared a location] ${address}` : '[shared a location]');
+  processAuthorizedMessage({ info, text, mediaPath: null });
+}
+
+async function handleStickerMessage(update) {
+  config = loadConfig();
+
+  const info = getMessageInfo(update);
+  if (!info.chatId) return;
+  if (!await authorizeMessage(info)) return;
 
   const stickerId = info.message.sticker_id || info.message.stickerId || info.message.id || '';
   const text = stickerId ? `[sent a sticker: ${stickerId}]` : '[sent a sticker]';
@@ -558,6 +737,7 @@ function startInternalServer(portOverride) {
 async function main() {
   console.log(`[zalo] Starting zylos-zalo v${process.env.npm_package_version || '0.1.1'}...`);
   console.log(`[zalo] Data directory: ${DATA_DIR}`);
+  console.log(`[zalo] Voice ASR: ${VOICE_ENABLED ? `enabled (${transcriptionProvider.provider})` : 'disabled/unavailable'}`);
 
   const mediaMaxAgeMs = (config.retention?.mediaMaxAgeDays || 7) * 24 * 60 * 60 * 1000;
   cleanupOldMedia(mediaMaxAgeMs);

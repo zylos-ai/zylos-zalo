@@ -16,6 +16,25 @@ function extensionFromContentType(contentType) {
   if (type === 'image/png') return '.png';
   if (type === 'image/gif') return '.gif';
   if (type === 'image/webp') return '.webp';
+  if (type === 'audio/mpeg') return '.mp3';
+  if (type === 'audio/mp3') return '.mp3';
+  if (type === 'audio/ogg') return '.ogg';
+  if (type === 'audio/wav') return '.wav';
+  if (type === 'audio/x-wav') return '.wav';
+  if (type === 'audio/mp4') return '.m4a';
+  if (type === 'audio/m4a') return '.m4a';
+  if (type === 'video/mp4') return '.mp4';
+  if (type === 'video/quicktime') return '.mov';
+  if (type === 'video/webm') return '.webm';
+  if (type === 'application/pdf') return '.pdf';
+  if (type === 'application/zip') return '.zip';
+  if (type === 'application/msword') return '.doc';
+  if (type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return '.docx';
+  if (type === 'application/vnd.ms-excel') return '.xls';
+  if (type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return '.xlsx';
+  if (type === 'application/vnd.ms-powerpoint') return '.ppt';
+  if (type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return '.pptx';
+  if (type === 'text/plain') return '.txt';
   return '';
 }
 
@@ -85,7 +104,7 @@ export async function validateDownloadUrl(url) {
 
 const MAX_REDIRECTS = 5;
 
-export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYTES, _redirectCount = 0 } = {}) {
+export async function downloadMedia(url, { messageId, maxBytes = DEFAULT_MAX_BYTES, fallbackExt = '.bin', _redirectCount = 0 } = {}) {
   if (!url) return null;
   if (_redirectCount > MAX_REDIRECTS) {
     console.warn(`[zalo] Download blocked: too many redirects for ${messageId}`);
@@ -114,7 +133,7 @@ export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYT
         console.warn(`[zalo] Download redirect blocked: ${resolved}`);
         return null;
       }
-      return downloadImage(resolved, { messageId, maxBytes, _redirectCount: _redirectCount + 1 });
+      return downloadMedia(resolved, { messageId, maxBytes, fallbackExt, _redirectCount: _redirectCount + 1 });
     }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -122,7 +141,7 @@ export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYT
 
     const contentLength = Number(response.headers.get('content-length') || 0);
     if (contentLength > maxBytes) {
-      throw new Error(`image exceeds ${maxBytes} bytes`);
+      throw new Error(`media exceeds ${maxBytes} bytes`);
     }
 
     const chunks = [];
@@ -130,13 +149,13 @@ export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYT
     for await (const chunk of response.body) {
       total += chunk.length;
       if (total > maxBytes) {
-        throw new Error(`image exceeds ${maxBytes} bytes`);
+        throw new Error(`media exceeds ${maxBytes} bytes`);
       }
       chunks.push(chunk);
     }
 
     const contentType = response.headers.get('content-type') || '';
-    const ext = extensionFromContentType(contentType) || extensionFromUrl(url) || '.img';
+    const ext = extensionFromContentType(contentType) || extensionFromUrl(url) || fallbackExt;
     const filePath = path.join(MEDIA_DIR, `${safeName(messageId)}${ext}`);
     const tmpPath = `${filePath}.tmp`;
     fs.writeFileSync(tmpPath, Buffer.concat(chunks));
@@ -145,6 +164,10 @@ export async function downloadImage(url, { messageId, maxBytes = DEFAULT_MAX_BYT
   } finally {
     clearTimeout(timer);
   }
+}
+
+export function downloadImage(url, options = {}) {
+  return downloadMedia(url, { fallbackExt: '.img', ...options });
 }
 
 const DEFAULT_MEDIA_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

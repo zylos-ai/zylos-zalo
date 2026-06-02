@@ -82,6 +82,35 @@ test('downloadImage enforces content-length and streamed byte limits', async () 
   });
 });
 
+test('downloadMedia saves file/audio/video types with useful extensions', async () => {
+  await withTempHome(async (home) => {
+    const cases = [
+      ['application/pdf', 'doc.pdf'],
+      ['audio/mpeg', 'voice.mp3'],
+      ['video/mp4', 'video.mp4'],
+    ];
+
+    for (const [contentType, expectedFile] of cases) {
+      const restore = installFetch(async () =>
+        new Response(Buffer.from('media-bytes'), {
+          status: 200,
+          headers: { 'content-type': contentType, 'content-length': '11' }
+        })
+      );
+      try {
+        const { downloadMedia } = await freshImport('src/lib/media.js');
+        const saved = await downloadMedia(`https://files.dlfl.vn/${expectedFile}`, {
+          messageId: path.basename(expectedFile, path.extname(expectedFile)),
+          maxBytes: 100
+        });
+        assert.equal(path.basename(saved.path), expectedFile);
+      } finally {
+        restore();
+      }
+    }
+  });
+});
+
 test('downloadImage returns null for blank URLs', async () => {
   await withTempHome(async () => {
     const { downloadImage } = await freshImport('src/lib/media.js');
