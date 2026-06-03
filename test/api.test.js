@@ -85,7 +85,29 @@ test('api converts Zalo and HTTP failures into ZaloApiError', async () => {
     await assert.rejects(() => api.getMe('bad-token'), (err) => {
       assert.equal(err.name, 'ZaloApiError');
       assert.equal(err.code, 401);
+      assert.equal(err.status, 200);
+      assert.equal(err.method, 'getMe');
       assert.equal(err.message, 'bad token');
+      return true;
+    });
+  } finally {
+    restore();
+  }
+});
+
+test('api surfaces HTTP error bodies when Zalo returns non-JSON', async () => {
+  const restore = installFetch(async () =>
+    new Response('upstream unavailable', { status: 502, headers: { 'content-type': 'text/plain' } })
+  );
+  try {
+    const api = await freshImport('src/lib/api.js');
+    await assert.rejects(() => api.sendPhoto('token-1', 'chat-1', 'https://example.com/photo.jpg'), (err) => {
+      assert.equal(err.name, 'ZaloApiError');
+      assert.equal(err.code, 502);
+      assert.equal(err.status, 502);
+      assert.equal(err.method, 'sendPhoto');
+      assert.match(err.message, /HTTP 502: upstream unavailable/);
+      assert.deepEqual(err.response, { raw: 'upstream unavailable' });
       return true;
     });
   } finally {

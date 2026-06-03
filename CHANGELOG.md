@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-06-03
+
+### Fixed
+- Surface full Zalo API failure details for outbound photo sends so media
+  delivery errors include the method, code, status, and response payload in the
+  failed receipt.
+
 ## [0.1.7] - 2026-06-03
 
 ### Added
