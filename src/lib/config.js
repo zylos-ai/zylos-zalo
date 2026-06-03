@@ -37,6 +37,12 @@ export const DEFAULT_CONFIG = {
     maxLength: 2000,
     mediaMaxMb: 10
   },
+  media: {
+    publicBaseUrl: null,
+    publicDir: null,
+    maxMb: 10,
+    ttlHours: 24
+  },
   logging: {
     maxLogBytes: 512 * 1024
   },
