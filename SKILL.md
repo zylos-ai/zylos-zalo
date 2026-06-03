@@ -1,6 +1,6 @@
 ---
 name: zalo
-version: 0.1.6
+version: 0.1.7
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),
@@ -197,7 +197,7 @@ DM and group access are controlled by independent policies:
 2. `dmPolicy` = `open`? → anyone can DM
 3. `dmPolicy` = `owner`? → only owner can DM
 4. `dmPolicy` = `allowlist`? → check `dmAllowFrom` list; not in list → dropped
-5. `dmPolicy` = `pairing`? → unknown sender is recorded in `dm-pairing.json`, owner is notified via C4, and access waits for approval
+5. `dmPolicy` = `pairing`? → unknown sender is recorded in `dm-pairing.json`, owner is notified via C4 and direct Zalo DM, and access waits for approval
 
 **Group message (groupPolicy):**
 1. `groupPolicy` = `disabled`? → all group messages dropped (including owner)
@@ -210,6 +210,7 @@ DM and group access are controlled by independent policies:
 - Owner bypasses allowlist checks only; `groupPolicy: disabled` blocks all group messages, including from owner
 - `dmPolicy` and `groupPolicy` are fully independent — changing one never affects the other
 - No user-level whitelist for groups; use per-group `allowFrom` to restrict senders
+- `dmPolicy: pairing` lets the owner approve or deny pending DM requests by replying with exact `approve` or `deny` messages in their Zalo DM; use `approve <user_id>` or `deny <user_id>` when multiple requests are pending. The admin CLI remains the fallback path.
 
 ### Groups Config Format
 

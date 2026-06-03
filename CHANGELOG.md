@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-06-03
+
+### Added
+- Notify the bound owner directly on Zalo when an unknown DM sender enters `dmPolicy: "pairing"`, while preserving the existing C4 admin notification and requester reply.
+- Allow the owner to approve or deny pending DM pairing requests in-chat with exact `approve` / `deny` commands, using `approve <user_id>` or `deny <user_id>` when multiple requests are pending.
+- Keep the admin CLI pairing commands as a fallback path.
+
 ## [0.1.6] - 2026-06-03
 
 ### Added
