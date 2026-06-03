@@ -1,6 +1,6 @@
 {
   "name": "zylos-zalo",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Zalo Bot Platform communication channel for Vietnamese messaging",
   "type": "module",
   "main": "src/index.js",
