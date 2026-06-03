@@ -1,23 +1,54 @@
 /**
- * Outbound image preflight helpers.
+ * Outbound image preflight and public rehost helpers.
  */
 
+import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
+import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isPrivateIp } from './ip.js';
 
+const DEFAULT_TTL_HOURS = 24;
 const DEFAULT_TIMEOUT_MS = 5000;
 const MAX_REDIRECTS = 5;
+
+function cleanBaseUrl(value) {
+  return String(value || '').replace(/\/+$/g, '');
+}
 
 function configuredMedia(config) {
   return config?.media || config?.outboundMedia || {};
 }
 
+function derivePublicBaseUrl(config) {
+  const media = configuredMedia(config);
+  if (media.publicBaseUrl) return cleanBaseUrl(media.publicBaseUrl);
+  if (config?.webhookUrl) {
+    try {
+      return `${new URL(config.webhookUrl).origin}/public/media`;
+    } catch {}
+  }
+  if (process.env.DOMAIN) return `https://${process.env.DOMAIN}/public/media`;
+  return null;
+}
+
+function resolvePublicDir(config) {
+  const media = configuredMedia(config);
+  return media.publicDir || path.join(process.env.HOME, 'zylos/http/public/media');
+}
+
 function mediaMaxBytes(config) {
   const media = configuredMedia(config);
-  const mb = Number(media.maxMb || media.preflightMaxMb || config?.message?.mediaMaxMb || 10);
+  const mb = Number(media.maxMb || media.rehostMaxMb || media.preflightMaxMb || config?.message?.mediaMaxMb || 10);
   return Math.max(1, mb) * 1024 * 1024;
+}
+
+function ttlMs(config) {
+  const media = configuredMedia(config);
+  const hours = Number(media.ttlHours || media.publicTtlHours || DEFAULT_TTL_HOURS);
+  return Math.max(1, hours) * 60 * 60 * 1000;
 }
 
 function parseRemoteUrl(raw) {
@@ -30,7 +61,7 @@ function parseRemoteUrl(raw) {
 
 async function requirePublicHttpsUrl(raw) {
   const parsed = parseRemoteUrl(raw);
-  if (!parsed) throw new Error('Zalo sendPhoto requires a public HTTPS image URL; local file hosting is not implemented yet');
+  if (!parsed) throw new Error('Zalo photo URL must be an absolute HTTPS URL or a local image path');
   if (parsed.protocol !== 'https:') throw new Error('Zalo photo URL must use HTTPS');
   if (isPrivateIp(parsed.hostname)) throw new Error('Zalo photo URL must not target private or loopback IPs');
   if (!net.isIP(parsed.hostname)) {
@@ -58,6 +89,15 @@ function contentTypeFromExtension(ext) {
   if (normalized === '.png') return 'image/png';
   if (normalized === '.gif') return 'image/gif';
   if (normalized === '.webp') return 'image/webp';
+  return '';
+}
+
+function extensionFromContentType(contentType) {
+  const type = contentTypeBase(contentType);
+  if (type === 'image/jpeg') return '.jpg';
+  if (type === 'image/png') return '.png';
+  if (type === 'image/gif') return '.gif';
+  if (type === 'image/webp') return '.webp';
   return '';
 }
 
@@ -98,6 +138,53 @@ function detectImageType({ headerType, buffer, fallbackExt }) {
   const fallback = contentTypeFromExtension(fallbackExt);
   if (fallback) return fallback;
   return '';
+}
+
+function resolveLocalPath(raw) {
+  if (String(raw || '').startsWith('file://')) {
+    return fileURLToPath(raw);
+  }
+  return path.resolve(String(raw || ''));
+}
+
+function publicConfig(config) {
+  const publicBaseUrl = derivePublicBaseUrl(config);
+  if (!publicBaseUrl) {
+    throw new Error('Outbound image rehost requires media.publicBaseUrl or webhookUrl/DOMAIN to derive https://<domain>/public/media');
+  }
+  const parsed = new URL(publicBaseUrl);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Outbound image rehost publicBaseUrl must use HTTPS');
+  }
+  if (!parsed.pathname.includes('/public/')) {
+    throw new Error('Outbound image rehost publicBaseUrl must include the /public/ path prefix');
+  }
+  return {
+    publicBaseUrl,
+    publicDir: resolvePublicDir(config)
+  };
+}
+
+function publicName(ext) {
+  return `zalo-${Date.now()}-${crypto.randomBytes(12).toString('hex')}${ext}`;
+}
+
+function writePublicImage(buffer, { contentType, source, config }) {
+  const { publicBaseUrl, publicDir } = publicConfig(config);
+  const fallbackExt = extensionFromPathOrUrl(source);
+  const ext = extensionFromContentType(contentType) || fallbackExt || '.jpg';
+  fs.mkdirSync(publicDir, { recursive: true, mode: 0o755 });
+  const name = publicName(ext);
+  const filePath = path.join(publicDir, name);
+  const tmpPath = `${filePath}.tmp`;
+  fs.writeFileSync(tmpPath, buffer, { mode: 0o644 });
+  fs.renameSync(tmpPath, filePath);
+  return {
+    url: `${publicBaseUrl}/${encodeURIComponent(name)}`,
+    path: filePath,
+    contentType,
+    size: buffer.length
+  };
 }
 
 function getHeader(headers, name) {
@@ -182,9 +269,109 @@ export async function preflightImageUrl(url, { config } = {}) {
   throw new Error(`image preflight failed: content-type ${contentType || 'missing'} is not image/*`);
 }
 
+async function readRemoteImage(url, { config, _redirectCount = 0 } = {}) {
+  if (_redirectCount > 5) throw new Error('image rehost failed: too many redirects');
+  const parsed = await requirePublicHttpsUrl(url);
+  const maxBytes = mediaMaxBytes(config);
+  const { response, url: finalUrl } = await guardedFetch(parsed.href, { method: 'GET' }, {
+    purpose: 'image rehost',
+    redirectCount: _redirectCount
+  });
+  if (response.status >= 300 && response.status < 400) {
+    const location = getHeader(response.headers, 'location');
+    if (!location) throw new Error('image rehost failed: redirect missing Location');
+    return readRemoteImage(new URL(location, parsed.href).href, { config, _redirectCount: _redirectCount + 1 });
+  }
+  if (!response.ok) throw new Error(`image rehost failed: HTTP ${response.status}`);
+
+  const length = Number(getHeader(response.headers, 'content-length') || 0);
+  if (length > maxBytes) throw new Error(`image rehost failed: media exceeds ${maxBytes} bytes`);
+
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of response.body) {
+    const buf = Buffer.from(chunk);
+    total += buf.length;
+    if (total > maxBytes) throw new Error(`image rehost failed: media exceeds ${maxBytes} bytes`);
+    chunks.push(buf);
+  }
+  const buffer = Buffer.concat(chunks);
+  const fallbackExt = extensionFromPathOrUrl(finalUrl);
+  const contentType = detectImageType({
+    headerType: getHeader(response.headers, 'content-type'),
+    buffer,
+    fallbackExt
+  });
+  if (!contentType) throw new Error('image rehost failed: content is not a supported image type');
+  return { buffer, contentType };
+}
+
+function readLocalImage(raw, { config } = {}) {
+  const filePath = resolveLocalPath(raw);
+  let stat;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    throw new Error(`local image not found: ${raw}`);
+  }
+  if (!stat.isFile()) throw new Error(`local image is not a file: ${raw}`);
+  const maxBytes = mediaMaxBytes(config);
+  if (stat.size > maxBytes) throw new Error(`local image exceeds ${maxBytes} bytes`);
+  const buffer = fs.readFileSync(filePath);
+  const fallbackExt = extensionFromPathOrUrl(filePath);
+  const contentType = detectImageType({ buffer, fallbackExt });
+  if (!contentType) throw new Error('local image is not a supported image type');
+  return { buffer, contentType };
+}
+
+export function cleanupPublicMedia(config) {
+  const publicDir = resolvePublicDir(config);
+  if (!fs.existsSync(publicDir)) return 0;
+  const cutoff = Date.now() - ttlMs(config);
+  let removed = 0;
+  for (const name of fs.readdirSync(publicDir)) {
+    if (!name.startsWith('zalo-') || name.endsWith('.tmp')) continue;
+    const filePath = path.join(publicDir, name);
+    try {
+      if (fs.statSync(filePath).mtimeMs < cutoff) {
+        fs.unlinkSync(filePath);
+        removed++;
+      }
+    } catch {}
+  }
+  if (removed > 0) console.log(`[zalo] Outbound media cleanup: removed ${removed} expired public files`);
+  return removed;
+}
+
+async function selfVerifyHostedImage(hosted, { config } = {}) {
+  try {
+    await preflightImageUrl(hosted.url, { config });
+  } catch (err) {
+    try { fs.unlinkSync(hosted.path); } catch {}
+    throw new Error(`hosted image self-check failed for ${hosted.url}: ${err.message}`);
+  }
+}
+
 export async function resolveOutboundImage(raw, { config } = {}) {
   const source = String(raw || '').trim();
-  if (!source) throw new Error('Image URL is required');
-  const result = await preflightImageUrl(source, { config });
-  return { url: result.url, hosted: false };
+  if (!source) throw new Error('Image URL or local path is required');
+  cleanupPublicMedia(config);
+
+  const remote = parseRemoteUrl(source);
+  if (remote) {
+    try {
+      await preflightImageUrl(remote.href, { config });
+      return { url: remote.href, hosted: false };
+    } catch (preflightError) {
+      const { buffer, contentType } = await readRemoteImage(remote.href, { config });
+      const hosted = writePublicImage(buffer, { contentType, source: remote.href, config });
+      await selfVerifyHostedImage(hosted, { config });
+      return { ...hosted, hosted: true, reason: preflightError.message };
+    }
+  }
+
+  const { buffer, contentType } = readLocalImage(source, { config });
+  const hosted = writePublicImage(buffer, { contentType, source, config });
+  await selfVerifyHostedImage(hosted, { config });
+  return { ...hosted, hosted: true, reason: 'local file rehosted' };
 }

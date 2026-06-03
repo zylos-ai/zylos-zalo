@@ -157,6 +157,91 @@ test('send script preflights public image URLs before sendPhoto', async () => {
   }
 });
 
+test('send script rehosts local image paths through configured public media', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  const publicDir = path.join(home, 'zylos/http/public/media');
+  const localImage = path.join(home, 'photo.jpg');
+  fs.writeFileSync(localImage, Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+  writeConfig(home, {
+    botToken: 'token-1',
+    internal_port: 9,
+    media: {
+      publicBaseUrl: 'https://example.com/public/media',
+      publicDir,
+      maxMb: 1
+    }
+  });
+  writeRuntimeFiles(home);
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1',
+      `[MEDIA:image]${localImage}`
+    ], {
+      env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const files = fs.readdirSync(publicDir);
+    assert.equal(files.length, 1);
+    assert.match(files[0], /^zalo-\d+-[a-f0-9]{24}\.png$/);
+    const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(calls[0].method, 'HEAD');
+    assert.match(calls[0].url, /^https:\/\/example\.com\/public\/media\/zalo-.*\.png$/);
+    assert.equal(calls[1].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendPhoto');
+    assert.match(calls[1].body.photo, /^https:\/\/example\.com\/public\/media\/zalo-.*\.png$/);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script rehosts remote images that fail preflight but download as images', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  const publicDir = path.join(home, 'zylos/http/public/media');
+  writeConfig(home, {
+    botToken: 'token-1',
+    internal_port: 9,
+    media: {
+      publicBaseUrl: 'https://example.com/public/media',
+      publicDir,
+      maxMb: 1
+    }
+  });
+  writeRuntimeFiles(home);
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1',
+      '[MEDIA:image]https://example.com/not-public/photo.jpg'
+    ], {
+      env: {
+        HOME: home,
+        ZALO_FETCH_LOG: fetchLog,
+        ZALO_PREFLIGHT_STATUS: '404',
+        ZALO_PREFLIGHT_CONTENT_TYPE: 'text/html',
+        ZALO_DOWNLOAD_CONTENT_TYPE: 'image/jpeg'
+      }
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(calls[0].method, 'HEAD');
+    assert.equal(calls[1].method, 'GET');
+    assert.equal(calls[2].method, 'HEAD');
+    assert.match(calls[2].url, /^https:\/\/example\.com\/public\/media\/zalo-\d+-[a-f0-9]{24}\.jpg$/);
+    assert.equal(calls[3].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendPhoto');
+    assert.match(calls[3].body.photo, /^https:\/\/example\.com\/public\/media\/zalo-\d+-[a-f0-9]{24}\.jpg$/);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
 test('send script accepts HEAD-not-allowed image URLs via ranged GET preflight', async () => {
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');
@@ -185,6 +270,71 @@ test('send script accepts HEAD-not-allowed image URLs via ranged GET preflight',
     assert.equal(calls[1].headers.Range, 'bytes=0-63');
     assert.equal(calls[2].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendPhoto');
     assert.equal(calls[2].body.photo, 'https://example.com/photo.jpg');
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script rejects preflight text/html when rehost download is not an image', async () => {
+  const home = makeTempHome();
+  const publicDir = path.join(home, 'zylos/http/public/media');
+  writeConfig(home, {
+    botToken: 'token-1',
+    internal_port: 9,
+    media: {
+      publicBaseUrl: 'https://example.com/public/media',
+      publicDir,
+      maxMb: 1
+    }
+  });
+  writeRuntimeFiles(home);
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1|req:req-html',
+      '[MEDIA:image]https://example.com/page.html'
+    ], {
+      env: {
+        HOME: home,
+        ZALO_PREFLIGHT_CONTENT_TYPE: 'text/html',
+        ZALO_DOWNLOAD_CONTENT_TYPE: 'text/html',
+        ZALO_DOWNLOAD_BYTES: Buffer.from('<html>nope</html>').toString('base64')
+      }
+    });
+
+    assert.equal(result.code, 1);
+    const receipt = parseReceipt(result.stdout);
+    assert.equal(receipt.status, 'failed');
+    assert.equal(receipt.type, 'photo');
+    assert.match(receipt.error, /content is not a supported image type/);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script rejects private-IP image URLs before fetch', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1|req:req-private',
+      '[MEDIA:image]https://127.0.0.1/photo.jpg'
+    ], {
+      env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
+    });
+
+    assert.equal(result.code, 1);
+    assert.equal(fs.existsSync(fetchLog), false);
+    const receipt = parseReceipt(result.stdout);
+    assert.equal(receipt.status, 'failed');
+    assert.match(receipt.error, /private or loopback IPs/);
   } finally {
     cleanupDir(home);
   }
@@ -262,7 +412,6 @@ test('send script emits a structured receipt with message ids on text send', asy
 
 test('send script emits a failed receipt and exits non-zero on send error', async () => {
   const home = makeTempHome();
-  // Local image path is rejected before any API call → triggers the failure path.
   writeConfig(home, { botToken: 'token-1', internal_port: 9 });
   writeRuntimeFiles(home);
   try {
@@ -280,7 +429,7 @@ test('send script emits a failed receipt and exits non-zero on send error', asyn
     assert.equal(receipt.status, 'failed');
     assert.equal(receipt.type, 'photo');
     assert.equal(receipt.correlationId, 'req-9');
-    assert.match(receipt.error, /public HTTPS image URL/);
+    assert.match(receipt.error, /local image not found/);
   } finally {
     cleanupDir(home);
   }

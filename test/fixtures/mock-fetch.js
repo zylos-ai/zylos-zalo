@@ -14,6 +14,15 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (!String(url).includes('bot-api.')) {
+    if (String(url).includes('/public/media/')) {
+      return new Response((init.method || 'GET') === 'HEAD' ? '' : PNG_BYTES, {
+        status: 200,
+        headers: {
+          'content-type': 'image/png',
+          'content-length': String(PNG_BYTES.length)
+        }
+      });
+    }
     if ((init.method || 'GET') === 'HEAD') {
       return new Response('', {
         status: Number(process.env.ZALO_PREFLIGHT_STATUS || 200),
@@ -25,7 +34,10 @@ globalThis.fetch = async (url, init = {}) => {
     }
     return new Response(process.env.ZALO_DOWNLOAD_BYTES ? Buffer.from(process.env.ZALO_DOWNLOAD_BYTES, 'base64') : PNG_BYTES, {
       status: Number(process.env.ZALO_DOWNLOAD_STATUS || 200),
-      headers: { 'content-type': process.env.ZALO_DOWNLOAD_CONTENT_TYPE || 'image/png' }
+      headers: {
+        'content-type': process.env.ZALO_DOWNLOAD_CONTENT_TYPE || 'image/png',
+        ...(process.env.ZALO_DOWNLOAD_CONTENT_LENGTH ? { 'content-length': process.env.ZALO_DOWNLOAD_CONTENT_LENGTH } : {})
+      }
     });
   }
 

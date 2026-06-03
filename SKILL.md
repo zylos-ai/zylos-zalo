@@ -1,6 +1,6 @@
 ---
 name: zalo
-version: 0.1.8
+version: 0.1.9
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),
@@ -75,7 +75,7 @@ node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "message"
 ## Media Messages
 
 ```bash
-# Send image (requires public HTTP(S) URL)
+# Send image (preflights public HTTPS URLs; local images are rehosted when configured)
 cat <<'EOF' | node ~/zylos/.claude/skills/comm-bridge/scripts/c4-send.js "zalo" "<chat_id>"
 [MEDIA:image]https://example.com/photo.jpg
 EOF
@@ -91,6 +91,12 @@ Inbound Zalo photo, file, voice, video, and GIF events are downloaded to
 placeholders. Link, location, and sticker events are forwarded as structured
 text placeholders. The default max inbound media size is 10 MB and can be
 adjusted with `message.mediaMaxMb` in config.
+
+Outbound `[MEDIA:image]` sends preflight public HTTPS URLs before calling Zalo.
+Local image paths, and remote URLs that fail preflight but download as images,
+are rehosted under `media.publicDir` and sent as `media.publicBaseUrl/<file>`.
+By default these derive to `~/zylos/http/public/media` and
+`https://<domain>/public/media` from `webhookUrl` or `DOMAIN`.
 
 Official Zalo Bot Platform voice notes are currently delivered as
 `message.unsupported.received` with metadata only and no audio URL. The channel

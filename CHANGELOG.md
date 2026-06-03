@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-06-03
+
+### Added
+- Preflight outbound photo URLs before `sendPhoto`, requiring HTTPS, reachable
+  2xx responses, `image/*` content type, and the configured media size ceiling.
+- Rehost local image paths and remote images that fail preflight through the
+  configured Caddy `/public/media` path with unguessable filenames and TTL
+  cleanup.
+
 ## [0.1.8] - 2026-06-03
 
 ### Fixed
