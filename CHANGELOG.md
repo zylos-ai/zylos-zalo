@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-06-03
+
+### Added
+- Reply to authorized `message.unsupported.received` user messages with a
+  friendly fallback explaining that Zalo voice notes cannot be read yet.
+- Apply normal DM/group access checks and a per-chat cooldown before sending
+  unsupported-message fallback replies.
+
 ## [0.1.5] - 2026-06-03
 
 Production-readiness hardening pass (review findings B1–B16).

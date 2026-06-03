@@ -1,6 +1,6 @@
 ---
 name: zalo
-version: 0.1.5
+version: 0.1.6
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),
@@ -91,6 +91,11 @@ Inbound Zalo photo, file, voice, video, and GIF events are downloaded to
 placeholders. Link, location, and sticker events are forwarded as structured
 text placeholders. The default max inbound media size is 10 MB and can be
 adjusted with `message.mediaMaxMb` in config.
+
+Official Zalo Bot Platform voice notes are currently delivered as
+`message.unsupported.received` with metadata only and no audio URL. The channel
+cannot transcribe those messages yet; for authorized senders it replies with a
+friendly fallback asking the user to type the message instead.
 
 ## Config Location
 

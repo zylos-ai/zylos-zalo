@@ -95,6 +95,11 @@ Inbound voice messages can be transcribed when `voiceTranscription` is `auto`,
 `OPENAI_API_KEY`. Set `voiceTranscription` to `disabled` to forward voice
 placeholders without transcription.
 
+On the official Zalo Bot Platform, voice notes are delivered as unsupported
+message events with metadata only and no audio URL. Those messages cannot be
+transcribed yet; authorized users receive a friendly fallback asking them to
+type the message instead.
+
 ## Documentation
 
 - [SKILL.md](./SKILL.md) — Component specification
