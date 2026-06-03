@@ -12,9 +12,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfig, DATA_DIR, repairConfigPermissions } from './lib/config.js';
+import { loadConfig, saveConfig, DATA_DIR, repairConfigPermissions } from './lib/config.js';
 import {
-  hasOwner, bindOwner, isDmAllowed,
+  hasOwner, bindOwner, isOwner, isDmAllowed,
   isGroupAllowed, isGroupSenderAllowed, getGroupName
 } from './lib/auth.js';
 import {
@@ -25,6 +25,12 @@ import { loadSeenDmUsers, sendDmWelcomeIfFirstSeen } from './lib/dm-welcome.js';
 import {
   loadPairingState, getPairingStatus, markPairingPending, savePairingState, buildPairingNotification
 } from './lib/dm-pairing.js';
+import {
+  applyOwnerPairingCommand,
+  ownerPairingReplyFor,
+  resolveOwnerPairingCommandForSender,
+  sendOwnerPairingDm
+} from './lib/pairing-owner.js';
 import { getTranscriptionProvider, transcribeAudio } from './lib/transcribe.js';
 import { maybeSendUnsupportedMessageFallback } from './lib/unsupported.js';
 import {
@@ -274,9 +280,21 @@ function notifyPairingRequest(info) {
   sendToC4('zalo', 'admin|type:dm-pairing', notification);
 }
 
-// Pairing DM policy: unknown senders are recorded pending + the owner is
-// notified (via C4); pending/denied senders are dropped silently to avoid spam.
-function handlePairingRequest(info) {
+async function notifyPairingOwner(info) {
+  await sendOwnerPairingDm({
+    config,
+    userId: info.senderId,
+    userName: info.userName,
+    firstMessage: info.message?.text || '',
+    send: (ownerId, message) => sendMessage(botToken, ownerId, message)
+  }).catch((err) => {
+    console.warn(`[zalo] Failed to notify owner about pairing request ${info.senderId}: ${err.message}`);
+  });
+}
+
+// Pairing DM policy: unknown senders are recorded pending and the owner is
+// notified through C4 plus direct Zalo DM; pending/denied senders are dropped silently.
+async function handlePairingRequest(info) {
   const state = loadPairingState();
   const status = getPairingStatus(info.senderId, state);
   if (status !== 'unknown') return;
@@ -288,8 +306,48 @@ function handlePairingRequest(info) {
   }, state);
   savePairingState(state);
   notifyPairingRequest(info);
+  await notifyPairingOwner(info);
   sendMessage(botToken, info.chatId,
     'Thanks! Your request to chat has been sent to the admin for approval.').catch(() => {});
+}
+
+async function handleOwnerPairingCommand(info) {
+  if (info.isGroup || !isOwner(config, info.senderId)) return false;
+  const state = loadPairingState();
+  const resolved = resolveOwnerPairingCommandForSender(config, info.senderId, info.message?.text || '', state);
+  if (!resolved) return false;
+
+  if (resolved.needsUserId || resolved.missing) {
+    await sendMessage(botToken, info.chatId, ownerPairingReplyFor(resolved)).catch(() => {});
+    return true;
+  }
+
+  const previousDmAllowFrom = Array.isArray(config.dmAllowFrom) ? [...config.dmAllowFrom] : config.dmAllowFrom;
+  const previousPending = { ...(state.pending || {}) };
+  const previousDenied = { ...(state.denied || {}) };
+
+  if (!applyOwnerPairingCommand(config, state, resolved)) {
+    await sendMessage(botToken, info.chatId, `No pending request for ${resolved.userId}.`).catch(() => {});
+    return true;
+  }
+
+  if (!saveConfig(config)) {
+    config.dmAllowFrom = previousDmAllowFrom;
+    state.pending = previousPending;
+    state.denied = previousDenied;
+    await sendMessage(botToken, info.chatId, 'Could not update pairing access. Please try again.').catch(() => {});
+    return true;
+  }
+
+  savePairingState(state);
+  await sendMessage(botToken, info.chatId, ownerPairingReplyFor(resolved)).catch(() => {});
+  if (resolved.action === 'approve') {
+    const chatId = resolved.request.chat_id || resolved.userId;
+    await sendMessage(botToken, chatId, 'You can chat with me now.').catch((err) => {
+      console.warn(`[zalo] Failed to notify approved pairing user ${resolved.userId}: ${err.message}`);
+    });
+  }
+  return true;
 }
 
 async function authorizeMessage(info) {
@@ -327,9 +385,11 @@ async function authorizeMessage(info) {
     return true;
   }
 
+  if (await handleOwnerPairingCommand(info)) return false;
+
   if (!isDmAllowed(config, info.senderId)) {
     if ((config.dmPolicy || 'owner') === 'pairing') {
-      handlePairingRequest(info);
+      await handlePairingRequest(info);
     } else {
       sendMessage(botToken, info.chatId, "Sorry, I'm not available. Please ask my admin for access.").catch(() => {});
     }

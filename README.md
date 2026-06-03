@@ -83,6 +83,8 @@ zylos uninstall zalo
 | `groupPolicy: disabled` | All group messages blocked |
 | Unknown user | Ignored |
 
+When private DM policy is set to `pairing`, unknown users are queued for approval. The admin notification still goes through C4, and the bound owner also receives a direct Zalo DM with the request details. The owner can reply with exact whole messages `approve` or `deny`; if multiple requests are pending, use `approve <user_id>` or `deny <user_id>`. The `dm-pending`, `dm-approve`, and `dm-deny` admin CLI commands remain available as the fallback path.
+
 ## Webhook Mode
 
 Webhook delivery mode requires your app to be reviewed and approved by Zalo before they will deliver events to your endpoint. Until approved, **use polling mode** (the default) — it works out of the box with no public URL or Zalo approval needed.
