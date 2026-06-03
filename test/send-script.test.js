@@ -247,8 +247,50 @@ test('send script emits a failed receipt and exits non-zero on send error', asyn
     const receipt = parseReceipt(result.stdout);
     assert.ok(receipt, 'expected a RECEIPT line even on failure');
     assert.equal(receipt.status, 'failed');
+    assert.equal(receipt.type, 'photo');
     assert.equal(receipt.correlationId, 'req-9');
     assert.match(receipt.error, /public HTTP\(S\) image URL/);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
+test('send script surfaces Zalo API response details on media rejection', async () => {
+  const home = makeTempHome();
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
+  const rejection = {
+    ok: false,
+    error_code: -201,
+    description: 'unsupported image URL',
+    details: { reason: 'content-type rejected' }
+  };
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1|req:req-media',
+      '[MEDIA:image]https://coco.site-hosted.example/photo.jpg'
+    ], {
+      env: {
+        HOME: home,
+        ZALO_FETCH_ERROR_JSON: JSON.stringify(rejection),
+        ZALO_FETCH_ERROR_STATUS: '200'
+      }
+    });
+
+    assert.equal(result.code, 1);
+    const receipt = parseReceipt(result.stdout);
+    assert.ok(receipt, 'expected a RECEIPT line even on API failure');
+    assert.equal(receipt.status, 'failed');
+    assert.equal(receipt.type, 'photo');
+    assert.equal(receipt.correlationId, 'req-media');
+    assert.match(receipt.error, /unsupported image URL/);
+    assert.match(receipt.error, /code=-201/);
+    assert.match(receipt.error, /method=sendPhoto/);
+    assert.match(receipt.error, /"details":\{"reason":"content-type rejected"\}/);
+    assert.match(result.stderr, /response=\{"ok":false/);
   } finally {
     cleanupDir(home);
   }

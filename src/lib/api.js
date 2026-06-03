@@ -14,16 +14,62 @@ const POLLING_BUFFER = 5000;
 let apiBaseUrl = DEFAULT_ZALO_API_BASE;
 
 export class ZaloApiError extends Error {
-  constructor(message, code, response) {
+  constructor(message, code, response, { status = null, method = null } = {}) {
     super(message);
     this.name = 'ZaloApiError';
     this.code = code;
     this.response = response;
+    this.status = status;
+    this.method = method;
   }
 
   get isPollingTimeout() {
     return this.code === 408;
   }
+}
+
+function truncate(value, maxLength = 500) {
+  const text = String(value || '');
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 3)}...`;
+}
+
+async function parseApiResponse(resp, method) {
+  const raw = await resp.text();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    if (!resp.ok) {
+      throw new ZaloApiError(
+        `HTTP ${resp.status}: ${truncate(raw)}`,
+        resp.status,
+        { raw: truncate(raw) },
+        { status: resp.status, method }
+      );
+    }
+    throw new ZaloApiError(
+      `Invalid JSON response from Zalo API: ${err.message}`,
+      resp.status || 0,
+      { raw: truncate(raw) },
+      { status: resp.status, method }
+    );
+  }
+}
+
+function apiErrorMessage(data, status) {
+  return data?.description
+    || data?.error_description
+    || data?.message
+    || data?.error?.message
+    || `API error ${status}`;
+}
+
+function apiErrorCode(data, status) {
+  return data?.error_code
+    ?? data?.code
+    ?? data?.error?.code
+    ?? status;
 }
 
 export function setApiBaseUrl(baseUrl) {
@@ -64,12 +110,14 @@ async function apiCall(token, method, body = {}, timeoutMs = DEFAULT_TIMEOUT) {
     });
     clearTimeout(timer);
 
-    const data = await resp.json();
-    if (!resp.ok || data.error_code) {
+    const data = await parseApiResponse(resp, method);
+    if (!resp.ok || data.error_code || data.ok === false) {
+      const code = apiErrorCode(data, resp.status);
       throw new ZaloApiError(
-        data.description || `API error ${resp.status}`,
-        data.error_code || resp.status,
-        data
+        apiErrorMessage(data, resp.status),
+        code,
+        data,
+        { status: resp.status, method }
       );
     }
     return data.result !== undefined ? data.result : data;
@@ -77,9 +125,9 @@ async function apiCall(token, method, body = {}, timeoutMs = DEFAULT_TIMEOUT) {
     clearTimeout(timer);
     if (err instanceof ZaloApiError) throw err;
     if (err.name === 'AbortError') {
-      throw new ZaloApiError('Request timeout', 408, null);
+      throw new ZaloApiError('Request timeout', 408, null, { method });
     }
-    throw new ZaloApiError(err.message, 0, null);
+    throw new ZaloApiError(err.message, 0, null, { method });
   }
 }
 

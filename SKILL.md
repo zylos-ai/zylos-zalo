@@ -1,6 +1,6 @@
 ---
 name: zalo
-version: 0.1.7
+version: 0.1.8
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),

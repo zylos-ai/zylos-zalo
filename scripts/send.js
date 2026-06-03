@@ -193,6 +193,34 @@ function emitReceipt({ status, type, messageIds = [], chunks, error }) {
   console.log('RECEIPT ' + JSON.stringify(receipt));
 }
 
+function formatReceiptError(err) {
+  if (!err || typeof err !== 'object') return String(err || 'unknown error');
+  const parts = [err.message || 'unknown error'];
+  const details = [];
+  if (err.code !== undefined && err.code !== null) details.push(`code=${err.code}`);
+  if (err.status !== undefined && err.status !== null) details.push(`status=${err.status}`);
+  if (err.method) details.push(`method=${err.method}`);
+  if (details.length) parts.push(`(${details.join(', ')})`);
+  if (err.response !== undefined && err.response !== null) {
+    parts.push(`response=${formatErrorResponse(err.response)}`);
+  }
+  return parts.join(' ');
+}
+
+function formatErrorResponse(response) {
+  try {
+    return truncateForLog(JSON.stringify(response));
+  } catch {
+    return truncateForLog(String(response));
+  }
+}
+
+function truncateForLog(value, maxLength = 1000) {
+  const text = String(value || '');
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 3)}...`;
+}
+
 async function sendText(text) {
   const chunks = splitMessage(stripMarkdown(text), MAX_LENGTH);
   const messageIds = [];
@@ -215,6 +243,7 @@ async function main() {
     process.exit(1);
   }
 
+  let receiptType = 'text';
   try {
     if (message.trim() === '[SKIP]') {
       markTypingDone();
@@ -224,6 +253,7 @@ async function main() {
     }
 
     if (message.startsWith('[MEDIA:image]')) {
+      receiptType = 'photo';
       const photoUrl = message.substring('[MEDIA:image]'.length).trim();
       if (!/^https?:\/\//i.test(photoUrl)) {
         throw new Error('Zalo sendPhoto requires a public HTTP(S) image URL; local file hosting is not implemented yet');
@@ -238,6 +268,7 @@ async function main() {
     }
 
     if (message.startsWith('[MEDIA:sticker]')) {
+      receiptType = 'sticker';
       const sticker = message.substring('[MEDIA:sticker]'.length).trim();
       if (!sticker) throw new Error('Sticker id is required');
       const result = await sendSticker(botToken, chatId, sticker);
@@ -256,8 +287,9 @@ async function main() {
     console.log('Message sent successfully');
   } catch (err) {
     markTypingDone();
-    emitReceipt({ status: 'failed', type: 'text', error: err.message });
-    console.error(`Error: ${err.message}`);
+    const error = formatReceiptError(err);
+    emitReceipt({ status: 'failed', type: receiptType, error });
+    console.error(`Error: ${error}`);
     process.exit(1);
   }
 }
