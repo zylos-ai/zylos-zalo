@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-06-03
+
+### Fixed
+- Startup log now reports the actual package version (read from `package.json`)
+  instead of falling back to a stale hardcoded `0.1.1` when `npm_package_version`
+  is unset (e.g. when launched under PM2 rather than `npm`).
+
 ## [0.1.10] - 2026-06-03
 
 ### Added

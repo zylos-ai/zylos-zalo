@@ -43,6 +43,14 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
+  } catch {
+    return 'unknown';
+  }
+})();
+
 repairConfigPermissions();
 let config = loadConfig();
 const botToken = config.botToken;
@@ -877,7 +885,7 @@ function startInternalServer(portOverride) {
 // ============================================================
 
 async function main() {
-  console.log(`[zalo] Starting zylos-zalo v${process.env.npm_package_version || '0.1.1'}...`);
+  console.log(`[zalo] Starting zylos-zalo v${VERSION}...`);
   console.log(`[zalo] Data directory: ${DATA_DIR}`);
   console.log(`[zalo] Voice ASR: ${VOICE_ENABLED ? `enabled (${transcriptionProvider.provider})` : 'disabled/unavailable'}`);
 
