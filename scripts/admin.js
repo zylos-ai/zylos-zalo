@@ -204,6 +204,152 @@ const commands = {
     console.log('Run: pm2 restart zylos-zalo');
   },
 
+  'set-group-policy': (policy) => {
+    const valid = ['open', 'allowlist', 'disabled'];
+    policy = String(policy || '').trim().toLowerCase();
+    if (!valid.includes(policy)) {
+      console.error(`Usage: admin.js set-group-policy <${valid.join('|')}>`);
+      process.exit(1);
+    }
+    const config = loadConfig();
+    config.groupPolicy = policy;
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    const desc = {
+      open: 'All groups allowed',
+      allowlist: 'Only configured groups allowed',
+      disabled: 'No group messages (including owner)'
+    };
+    console.log(`Group policy set to: ${policy} (${desc[policy]})`);
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
+  'list-groups': () => {
+    const config = loadConfig();
+    console.log(`Group policy: ${config.groupPolicy || 'allowlist'}`);
+    const groups = config.groups || {};
+    const ids = Object.keys(groups);
+    if (!ids.length) {
+      console.log('Configured groups (0): none');
+      return;
+    }
+    console.log(`Configured groups (${ids.length}):`);
+    const defaultLimit = config.message?.context_messages || 5;
+    for (const id of ids) {
+      const g = groups[id] || {};
+      const allowFrom = Array.isArray(g.allowFrom) ? g.allowFrom : [];
+      const senders = (allowFrom.length === 0 || allowFrom.includes('*')) ? 'anyone' : allowFrom.join(', ');
+      console.log(`  ${g.name || '(unnamed)'} (${id}) — allowFrom: ${senders}; historyLimit: ${g.historyLimit ?? defaultLimit}`);
+    }
+  },
+
+  'add-group': (chatId, ...nameParts) => {
+    chatId = String(chatId || '').trim();
+    const name = nameParts.join(' ').trim();
+    if (!chatId || !name) {
+      console.error('Usage: admin.js add-group <chat_id> <name>');
+      process.exit(1);
+    }
+    const config = loadConfig();
+    if (!config.groups) config.groups = {};
+    if (config.groups[chatId]) {
+      console.log(`Group ${chatId} already configured: ${config.groups[chatId].name}`);
+      return;
+    }
+    config.groups[chatId] = {
+      name,
+      allowFrom: ['*'],
+      historyLimit: config.message?.context_messages || 5,
+      added_at: new Date().toISOString()
+    };
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    console.log(`Added group: ${name} (${chatId}) — allowFrom: anyone`);
+    if ((config.groupPolicy || 'allowlist') !== 'allowlist') {
+      console.log(`Note: groupPolicy is "${config.groupPolicy}"; set to "allowlist" for per-group config to gate access.`);
+    }
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
+  'remove-group': (chatId) => {
+    chatId = String(chatId || '').trim();
+    if (!chatId) {
+      console.error('Usage: admin.js remove-group <chat_id>');
+      process.exit(1);
+    }
+    const config = loadConfig();
+    if (!config.groups || !config.groups[chatId]) {
+      console.log(`Group ${chatId} not found`);
+      return;
+    }
+    const name = config.groups[chatId].name;
+    delete config.groups[chatId];
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    console.log(`Removed group: ${name || '(unnamed)'} (${chatId})`);
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
+  'set-group-allowfrom': (chatId, value) => {
+    chatId = String(chatId || '').trim();
+    value = String(value || '').trim();
+    if (!chatId || !value) {
+      console.error('Usage: admin.js set-group-allowfrom <chat_id> <id1,id2,...|*>');
+      console.error('  Use "*" to allow all members; a comma-separated list to restrict senders.');
+      process.exit(1);
+    }
+    const config = loadConfig();
+    if (!config.groups || !config.groups[chatId]) {
+      console.error(`Group ${chatId} not found. Add it first: admin.js add-group ${chatId} <name>`);
+      process.exit(1);
+    }
+    let allowFrom;
+    if (value === '*') {
+      allowFrom = ['*'];
+    } else {
+      allowFrom = value.split(',').map(s => s.trim()).filter(Boolean);
+      if (!allowFrom.length) {
+        console.error('Usage: admin.js set-group-allowfrom <chat_id> <id1,id2,...|*>');
+        process.exit(1);
+      }
+    }
+    config.groups[chatId].allowFrom = allowFrom;
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    const senders = allowFrom.includes('*') ? 'anyone (all members)' : allowFrom.join(', ');
+    console.log(`Group ${chatId} allowFrom set to: ${senders}`);
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
+  'set-group-history-limit': (chatId, limit) => {
+    chatId = String(chatId || '').trim();
+    const n = Number(limit);
+    if (!chatId || !Number.isInteger(n) || n < 0) {
+      console.error('Usage: admin.js set-group-history-limit <chat_id> <n>');
+      process.exit(1);
+    }
+    const config = loadConfig();
+    if (!config.groups || !config.groups[chatId]) {
+      console.error(`Group ${chatId} not found. Add it first: admin.js add-group ${chatId} <name>`);
+      process.exit(1);
+    }
+    config.groups[chatId].historyLimit = n;
+    if (!saveConfig(config)) {
+      console.error('[zalo] Failed to save config');
+      process.exit(1);
+    }
+    console.log(`Group ${chatId} historyLimit set to: ${n}`);
+    console.log('Run: pm2 restart zylos-zalo');
+  },
+
   doctor: async () => {
     const config = loadConfig();
     const { runDoctor, formatDoctorReport } = await import('../src/lib/doctor.js');
@@ -238,6 +384,14 @@ Commands:
   dm-pending                             List pending DM access requests
   dm-approve <user_id>                   Approve a pending request (adds to dmAllowFrom)
   dm-deny <user_id> [reason]             Deny a request (records denial)
+
+  Group Access Control:
+  set-group-policy <open|allowlist|disabled>    Set group policy
+  list-groups                            List configured groups (policy, allowFrom, historyLimit)
+  add-group <chat_id> <name>             Add a group (allowFrom defaults to anyone)
+  remove-group <chat_id>                 Remove a group from config
+  set-group-allowfrom <chat_id> <id1,id2,...|*>  Restrict senders ("*" = anyone)
+  set-group-history-limit <chat_id> <n>  Set per-group context message limit
 
   Bot Settings:
   set-delivery <polling|webhook>         Set message delivery mode

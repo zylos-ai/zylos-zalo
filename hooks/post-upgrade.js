@@ -9,7 +9,7 @@
  * - Config schema migrations
  * - Data format updates
  *
- * Note: Service restart is handled by Claude after this hook.
+ * Note: Service restart is handled by zylos-core after this hook.
  */
 
 import fs from 'node:fs';

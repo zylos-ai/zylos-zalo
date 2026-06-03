@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-06-03
+
+### Added
+- Group-management admin CLI commands in `scripts/admin.js`: `set-group-policy`,
+  `list-groups`, `add-group`, `remove-group`, `set-group-allowfrom`, and
+  `set-group-history-limit`. Operators can now configure group access from the
+  CLI instead of hand-editing `config.json`. Per-group `allowFrom` follows the
+  standard semantics (empty or `*` = allow all configured-group members;
+  non-empty list = restrict senders), matching runtime `isGroupSenderAllowed`.
+
+### Changed
+- `hooks/post-upgrade.js`: clarified the lifecycle note to "Service restart is
+  handled by zylos-core after this hook" (runtime-neutral wording).
+
 ## [0.1.9] - 2026-06-03
 
 ### Added
