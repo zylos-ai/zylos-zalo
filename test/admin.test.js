@@ -165,6 +165,20 @@ test('admin set-group-history-limit updates the per-group limit', async () => {
   }
 });
 
+test('admin set-group-history-limit rejects 0 (runtime treats falsy as unset)', async () => {
+  const home = makeTempHome();
+  try {
+    writeConfig(home, baseConfig({ groups: { groupA: { name: 'A', allowFrom: ['*'], historyLimit: 5 } } }));
+    const res = await admin(home, 'set-group-history-limit', 'groupA', '0');
+    assert.equal(res.code, 1);
+    assert.match(res.stderr, /positive integer/);
+    // unchanged
+    assert.equal(readConfig(home).groups.groupA.historyLimit, 5);
+  } finally {
+    cleanupDir(home);
+  }
+});
+
 test('admin list-groups shows configured groups', async () => {
   const home = makeTempHome();
   try {

@@ -264,6 +264,14 @@ $ADM set-dm-welcome <message>                 # Set first-contact DM welcome
 $ADM show-dm-welcome                          # Show first-contact DM welcome
 $ADM clear-dm-welcome                         # Disable first-contact DM welcome
 
+# Group Access Control
+$ADM set-group-policy <open|allowlist|disabled>      # Set group policy
+$ADM list-groups                              # List configured groups (policy, allowFrom, historyLimit)
+$ADM add-group <chat_id> <name>               # Add a group (allowFrom defaults to anyone)
+$ADM remove-group <chat_id>                   # Remove a group from config
+$ADM set-group-allowfrom <chat_id> <id1,id2,...|*>   # Restrict senders ("*" = anyone)
+$ADM set-group-history-limit <chat_id> <n>    # Per-group context limit (positive integer)
+
 # Bot Settings
 $ADM set-delivery <polling|webhook>           # Switch delivery mode
 ```

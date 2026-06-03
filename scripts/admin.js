@@ -332,8 +332,11 @@ const commands = {
   'set-group-history-limit': (chatId, limit) => {
     chatId = String(chatId || '').trim();
     const n = Number(limit);
-    if (!chatId || !Number.isInteger(n) || n < 0) {
-      console.error('Usage: admin.js set-group-history-limit <chat_id> <n>');
+    // Reject 0: runtime context.js treats a falsy historyLimit as "unset" and
+    // falls back to the default, so persisting 0 would mislead (it would NOT
+    // mean zero context). Require a positive integer.
+    if (!chatId || !Number.isInteger(n) || n < 1) {
+      console.error('Usage: admin.js set-group-history-limit <chat_id> <n>   (n must be a positive integer)');
       process.exit(1);
     }
     const config = loadConfig();
