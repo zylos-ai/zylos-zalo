@@ -131,7 +131,7 @@ test('send script uses configured API base and sends stickers', async () => {
   }
 });
 
-test('send script sends public image URLs and rejects local image paths', async () => {
+test('send script preflights public image URLs before sendPhoto', async () => {
   const home = makeTempHome();
   const fetchLog = path.join(home, 'fetch.log');
   writeConfig(home, { botToken: 'token-1', internal_port: 9 });
@@ -148,12 +148,43 @@ test('send script sends public image URLs and rejects local image paths', async 
     });
     assert.equal(result.code, 0, result.stderr);
     const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
-    assert.equal(calls[0].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendPhoto');
-    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', photo: 'https://example.com/photo.jpg' });
+    assert.equal(calls[0].method, 'HEAD');
+    assert.equal(calls[0].url, 'https://example.com/photo.jpg');
+    assert.equal(calls[1].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendPhoto');
+    assert.deepEqual(calls[1].body, { chat_id: 'chat-1', photo: 'https://example.com/photo.jpg' });
+  } finally {
+    cleanupDir(home);
+  }
+});
 
-    result = await runNode(['scripts/send.js', 'chat-1', '[MEDIA:image]/tmp/photo.jpg'], { env: { HOME: home } });
-    assert.equal(result.code, 1);
-    assert.match(result.stderr, /requires a public HTTP\(S\) image URL/);
+test('send script accepts HEAD-not-allowed image URLs via ranged GET preflight', async () => {
+  const home = makeTempHome();
+  const fetchLog = path.join(home, 'fetch.log');
+  writeConfig(home, { botToken: 'token-1', internal_port: 9 });
+  writeRuntimeFiles(home);
+  try {
+    const result = await runNode([
+      '--import',
+      path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
+      'scripts/send.js',
+      'chat-1',
+      '[MEDIA:image]https://example.com/photo.jpg'
+    ], {
+      env: {
+        HOME: home,
+        ZALO_FETCH_LOG: fetchLog,
+        ZALO_PREFLIGHT_STATUS: '405',
+        ZALO_PREFLIGHT_CONTENT_TYPE: 'text/plain'
+      }
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(calls[0].method, 'HEAD');
+    assert.equal(calls[1].method, 'GET');
+    assert.equal(calls[1].headers.Range, 'bytes=0-63');
+    assert.equal(calls[2].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendPhoto');
+    assert.equal(calls[2].body.photo, 'https://example.com/photo.jpg');
   } finally {
     cleanupDir(home);
   }
@@ -249,7 +280,7 @@ test('send script emits a failed receipt and exits non-zero on send error', asyn
     assert.equal(receipt.status, 'failed');
     assert.equal(receipt.type, 'photo');
     assert.equal(receipt.correlationId, 'req-9');
-    assert.match(receipt.error, /public HTTP\(S\) image URL/);
+    assert.match(receipt.error, /public HTTPS image URL/);
   } finally {
     cleanupDir(home);
   }
@@ -271,7 +302,7 @@ test('send script surfaces Zalo API response details on media rejection', async 
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
       'chat-1|req:req-media',
-      '[MEDIA:image]https://coco.site-hosted.example/photo.jpg'
+      '[MEDIA:image]https://example.com/coco-photo.jpg'
     ], {
       env: {
         HOME: home,

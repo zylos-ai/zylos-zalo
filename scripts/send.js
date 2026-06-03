@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, DATA_DIR } from '../src/lib/config.js';
 import { sendMessage, sendPhoto, sendSticker, setApiBaseUrl } from '../src/lib/api.js';
+import { resolveOutboundImage } from '../src/lib/outbound-media.js';
 
 const MAX_LENGTH = 2000;
 
@@ -254,11 +255,9 @@ async function main() {
 
     if (message.startsWith('[MEDIA:image]')) {
       receiptType = 'photo';
-      const photoUrl = message.substring('[MEDIA:image]'.length).trim();
-      if (!/^https?:\/\//i.test(photoUrl)) {
-        throw new Error('Zalo sendPhoto requires a public HTTP(S) image URL; local file hosting is not implemented yet');
-      }
-      const result = await sendPhoto(botToken, chatId, photoUrl);
+      const imageSource = message.substring('[MEDIA:image]'.length).trim();
+      const resolvedImage = await resolveOutboundImage(imageSource, { config });
+      const result = await sendPhoto(botToken, chatId, resolvedImage.url);
       markTypingDone();
       await recordOutgoing('[sent a photo]');
       const id = extractMessageId(result);
