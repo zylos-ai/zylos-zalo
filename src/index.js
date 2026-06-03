@@ -26,6 +26,7 @@ import {
   loadPairingState, getPairingStatus, markPairingPending, savePairingState, buildPairingNotification
 } from './lib/dm-pairing.js';
 import { getTranscriptionProvider, transcribeAudio } from './lib/transcribe.js';
+import { maybeSendUnsupportedMessageFallback } from './lib/unsupported.js';
 import {
   getMe, getUpdates, sendMessage, sendChatAction,
   setWebhook, deleteWebhook, ZaloApiError, setApiBaseUrl
@@ -65,6 +66,7 @@ setApiBaseUrl(config.apiBaseUrl);
 let transcriptionProvider = getTranscriptionProvider(config.voiceTranscription, process.env, { modelPath: config.whisperModel || process.env.WHISPER_MODEL });
 let VOICE_ENABLED = transcriptionProvider.available;
 const seenDmUsers = loadSeenDmUsers();
+const unsupportedMessageCooldowns = new Map();
 
 // ============================================================
 // C4 bridge
@@ -224,6 +226,8 @@ async function handleUpdate(update) {
     await handleLocationMessage(update);
   } else if (eventName === 'message.sticker.received' || eventName === 'user_send_sticker') {
     await handleStickerMessage(update);
+  } else if (eventName === 'message.unsupported.received') {
+    await handleUnsupportedMessage(update);
   } else {
     console.log(`[zalo] Unhandled event: ${eventName}`);
   }
@@ -573,6 +577,23 @@ async function handleStickerMessage(update) {
   const stickerId = info.message.sticker_id || info.message.stickerId || info.message.id || '';
   const text = stickerId ? `[sent a sticker: ${stickerId}]` : '[sent a sticker]';
   processAuthorizedMessage({ info, text, mediaPath: null });
+}
+
+async function handleUnsupportedMessage(update) {
+  config = loadConfig();
+
+  const info = getMessageInfo(update);
+  try {
+    await maybeSendUnsupportedMessageFallback({
+      update,
+      info,
+      config,
+      cooldowns: unsupportedMessageCooldowns,
+      send: (chatId, text) => sendMessage(botToken, chatId, text)
+    });
+  } catch (err) {
+    console.warn(`[zalo] Unsupported-message fallback failed: ${err.message}`);
+  }
 }
 
 // ============================================================
