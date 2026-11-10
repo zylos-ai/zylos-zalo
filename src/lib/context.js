@@ -27,6 +27,30 @@ function logFileName(chatId) {
   return `${String(chatId).replace(/[^a-zA-Z0-9_-]/g, '_')}.jsonl`;
 }
 
+/**
+ * Find an entry in a chat's component log by message id. The log is written
+ * only for inbound messages the component accepted (plus `user_id: 'bot'`
+ * outgoing records), so a hit proves who wrote an accepted message.
+ * @returns {object|null}
+ */
+export function findLoggedMessage(chatId, messageId, logsDir = LOGS_DIR) {
+  if (!chatId || !messageId) return null;
+  let lines;
+  try {
+    lines = fs.readFileSync(path.join(logsDir, logFileName(chatId)), 'utf8').split('\n');
+  } catch {
+    return null;
+  }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i]) continue;
+    try {
+      const entry = JSON.parse(lines[i]);
+      if (String(entry?.message_id) === String(messageId)) return entry;
+    } catch { /* A damaged record is not proof. */ }
+  }
+  return null;
+}
+
 function getHistoryLimit(chatId, config) {
   const gc = config?.groups?.[String(chatId)];
   return gc?.historyLimit || config?.message?.context_messages || 5;

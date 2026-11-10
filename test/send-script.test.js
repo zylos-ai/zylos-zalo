@@ -7,7 +7,8 @@ import { cleanupDir, makeTempHome, repoRoot, runNode } from './helpers.js';
 const DATA_SUBDIR = 'zylos/components/zalo';
 
 function writeConfig(home, config) {
-  fs.writeFileSync(path.join(home, DATA_SUBDIR, 'config.json'), JSON.stringify(config));
+  // These tests exercise delivery, not the outbound policy: open DMs by default.
+  fs.writeFileSync(path.join(home, DATA_SUBDIR, 'config.json'), JSON.stringify({ dmPolicy: 'open', ...config }));
 }
 
 function writeRuntimeFiles(home, { token = 'test-internal-token', port = 9 } = {}) {

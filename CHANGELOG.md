@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-10
+
+### Added
+- Session groups for multi-session zylos-core: private chats are
+  `dm-<chat id>`, groups `group-<chat id>`, owner pairing notices `admin`.
+  Reply endpoints now carry `type:dm` / `type:group`; endpoints without a type
+  (built before 0.2.0) are treated as private chats. `--session-group` is
+  passed only when the installed Core lists it in `c4-receive-options.json`,
+  so older Cores see unchanged args.
+- `scripts/session-group.js <endpoint>` prints the group for an endpoint.
+- Outbound destination policy in `send.js`, applying the inbound rules: DMs
+  only to chats `isDmAllowed` accepts (owner always), or as a reply to a
+  message the component log shows was accepted from a sender who is still
+  allowed; groups only when `isGroupAllowed`. Blocked sends exit 1 with
+  `outbound blocked` before any API call or history record.
+
+### Changed
+- c4-receive rejections follow `error.persisted`: already stored -> no reply
+  and no resend; nothing stored -> "Sorry, I could not process your message
+  right now. Please try again."; unknown -> "this message may not have
+  reached me...". Core's error text only goes to the log (it was previously
+  sent to the user). A rejected group is never resent to the overall group.
+- No 30s timeout on c4-receive: killing it after Core stored the row and
+  retrying would deliver the message twice. Unstructured failures retry once.
+
 ## [0.1.11] - 2026-06-03
 
 ### Fixed
