@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { outboundDenialReason } from '../src/lib/outbound.js';
+import { isGroupOpenFor } from '../src/lib/auth.js';
 import { cleanupDir, makeTempHome, repoRoot, runNode } from './helpers.js';
 
 const owner = { user_id: 'u-owner', name: 'O' };
@@ -40,11 +41,27 @@ test('outbound DM: reply proven by the component log of a still-allowed sender',
 
 test('outbound group follows the inbound group policy', () => {
   const allowlist = { owner, groupPolicy: 'allowlist', groups: { gA: { name: 'a' } } };
+  const log = { 'gX/m1': { message_id: 'm1', user_id: 'u-owner' }, 'gX/m2': { message_id: 'm2', user_id: 'u-x' },
+    'gA/m1': { message_id: 'm1', user_id: 'u-owner' } };
+  const find = (chatId, msg) => log[`${chatId}/${msg}`] || null;
   assert.equal(outboundDenialReason(allowlist, ep('gA', 'group')), null);
-  assert.match(outboundDenialReason(allowlist, ep('gX', 'group', 'm1')), /group gX is not allowed/);
   assert.equal(outboundDenialReason({ owner, groupPolicy: 'open' }, ep('gX', 'group')), null);
-  assert.notEqual(outboundDenialReason({ ...allowlist, groupPolicy: 'disabled' }, ep('gA', 'group', 'm1')), null,
-    'inbound rejects even the owner when disabled, so outbound does too');
+  assert.match(outboundDenialReason(allowlist, ep('gX', 'group'), find), /group gX is not allowed/, 'proactive send blocked');
+  assert.equal(outboundDenialReason(allowlist, ep('gX', 'group', 'm1'), find), null, 'reply to the owner allowed');
+  assert.notEqual(outboundDenialReason(allowlist, ep('gX', 'group', 'm2'), find), null, 'reply to a non-owner blocked');
+  assert.notEqual(outboundDenialReason(allowlist, ep('gX', 'group', 'm9'), find), null, 'missing log entry blocked');
+  const disabled = { ...allowlist, groupPolicy: 'disabled' };
+  assert.notEqual(outboundDenialReason(disabled, ep('gA', 'group', 'm1'), find), null, 'disabled blocks the owner reply');
+});
+
+test('inbound group gate: owner in an unlisted group, disabled rejects everyone', () => {
+  const allowlist = { owner, groupPolicy: 'allowlist', groups: { gA: { name: 'a' } } };
+  assert.equal(isGroupOpenFor(allowlist, 'gA', 'u-x'), true, 'allowlisted group');
+  assert.equal(isGroupOpenFor(allowlist, 'gX', 'u-owner'), true, 'owner in unlisted group accepted');
+  assert.equal(isGroupOpenFor(allowlist, 'gX', 'u-x'), false, 'non-owner in unlisted group rejected');
+  const disabled = { ...allowlist, groupPolicy: 'disabled' };
+  assert.equal(isGroupOpenFor(disabled, 'gA', 'u-owner'), false, 'disabled rejects the owner');
+  assert.equal(isGroupOpenFor(disabled, 'gX', 'u-owner'), false);
 });
 
 test('send script blocks before any network call or record', async () => {

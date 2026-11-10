@@ -73,9 +73,11 @@ lookup needs no stored state. Rejections follow `error.persisted`; a group
 is never dropped and resent to the overall group.
 
 `send.js` applies the inbound access rules to the destination
-(`src/lib/outbound.js`). Groups need `isGroupAllowed`; since inbound does not
-let the owner through a disabled or unlisted group, there is no owner-reply
-exception. DMs need `isDmAllowed` on the chat id, or a reply whose `msg` is
+(`src/lib/outbound.js`). Inbound accepts the owner in a group that is not
+allowlisted (`isGroupOpenFor`), while `groupPolicy: disabled` rejects
+everyone. Outbound matches: groups need `isGroupAllowed`, or (unless
+disabled) a reply whose `msg` the group's component log shows the owner
+wrote. DMs need `isDmAllowed` on the chat id, or a reply whose `msg` is
 in the chat's component log (written only for accepted messages) from a
 sender who is still allowed. Missing logs deny.
 

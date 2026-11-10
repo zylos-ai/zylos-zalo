@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, saveConfig, DATA_DIR, repairConfigPermissions } from './lib/config.js';
 import { sendToC4 as sendC4 } from './lib/c4.js';
 import {
-  hasOwner, bindOwner, isOwner, isDmAllowed,
+  hasOwner, bindOwner, isOwner, isDmAllowed, isGroupOpenFor,
   isGroupAllowed, isGroupSenderAllowed, getGroupName
 } from './lib/auth.js';
 import {
@@ -342,7 +342,7 @@ async function authorizeMessage(info) {
   }
 
   if (info.isGroup) {
-    if (!isGroupAllowed(config, info.chatId)) {
+    if (!isGroupOpenFor(config, info.chatId, info.senderId)) {
       console.log(`[zalo] Group ${info.chatId} not allowed, ignoring`);
       return false;
     }

@@ -99,8 +99,10 @@ node ~/zylos/.claude/skills/zalo/scripts/session-group.js "<endpoint>"
 - **Private chat:** only the owner or users the DM policy allows. A reply to a
   message the component accepted (found in its chat log) is also allowed while
   that sender is still allowed.
-- **Group:** only groups the group policy allows (`open`, or listed for
-  `allowlist`). `disabled` blocks all group sends, matching inbound.
+- **Group:** groups the group policy allows (`open`, or listed for
+  `allowlist`). In a group that is not allowlisted, only a reply to a message
+  the owner sent there (found in the component log). `disabled` blocks all
+  group sends, matching inbound.
 - Blocked sends exit 1 with `outbound blocked`; nothing is sent or recorded.
 
 ## Media Messages
@@ -239,7 +241,7 @@ DM and group access are controlled by independent policies:
 **Group message (groupPolicy):**
 1. `groupPolicy` = `disabled`? → all group messages dropped (including owner)
 2. `groupPolicy` = `open`? → respond from any group
-3. `groupPolicy` = `allowlist`? → only configured groups; unlisted groups → dropped
+3. `groupPolicy` = `allowlist`? → only configured groups; unlisted groups → dropped, except messages from the owner
 4. Per-group `allowFrom` set? → only listed senders pass (owner always bypasses)
 5. `allowFrom: ["*"]` → all group members allowed
 

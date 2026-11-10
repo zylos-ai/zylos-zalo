@@ -54,6 +54,15 @@ export function isGroupAllowed(config, chatId) {
   return !!config.groups?.[String(chatId)];
 }
 
+/**
+ * Inbound group gate: allowlisted (or open) groups, plus the owner in any
+ * group unless groupPolicy is `disabled`, which rejects everyone.
+ */
+export function isGroupOpenFor(config, chatId, senderId) {
+  if (isGroupAllowed(config, chatId)) return true;
+  return (config.groupPolicy || 'allowlist') !== 'disabled' && isOwner(config, senderId);
+}
+
 export function isGroupSenderAllowed(config, chatId, senderId) {
   if (isOwner(config, senderId)) return true;
   const groupConfig = config.groups?.[String(chatId)] || {};

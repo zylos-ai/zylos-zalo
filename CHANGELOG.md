@@ -20,10 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Outbound destination policy in `send.js`, applying the inbound rules: DMs
   only to chats `isDmAllowed` accepts (owner always), or as a reply to a
   message the component log shows was accepted from a sender who is still
-  allowed; groups only when `isGroupAllowed`. Blocked sends exit 1 with
-  `outbound blocked` before any API call or history record.
+  allowed; groups when `isGroupAllowed`, otherwise only a reply to an accepted
+  owner message proven by the group's component log (`disabled` blocks all).
+  Blocked sends exit 1 with `outbound blocked` before any API call or
+  history record.
 
 ### Changed
+- The owner's messages in a group that is not allowlisted are now accepted
+  (same as Telegram); `groupPolicy: disabled` still rejects everyone,
+  including the owner.
 - c4-receive rejections follow `error.persisted`: already stored -> no reply
   and no resend; nothing stored -> "Sorry, I could not process your message
   right now. Please try again."; unknown -> "this message may not have
