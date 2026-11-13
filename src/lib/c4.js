@@ -62,6 +62,17 @@ export function parseC4Response(stdout) {
   }
 }
 
+/** Spawn errors where c4-receive never ran, so nothing can have been stored. */
+const SPAWN_ERROR_CODES = new Set(['ENOENT', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'ENOMEM', 'E2BIG', 'ENOEXEC']);
+
+/**
+ * True only when the child process was never started (string spawn errno).
+ * A started process exits with a numeric code or a signal: outcome unknown.
+ */
+export function neverStarted(error) {
+  return !!error && typeof error.code === 'string' && SPAWN_ERROR_CODES.has(error.code) && !error.signal;
+}
+
 /**
  * Send an inbound message to the agent via C4.
  * The session group is derived from the endpoint and passed only when the
@@ -81,17 +92,6 @@ export function parseC4Response(stdout) {
  * @param {function} [opts.onDone] - Test hook: called with the final outcome
  * @param {function} [opts.exec] - Test hook replacing child_process.execFile
  */
-/** Spawn errors where c4-receive never ran, so nothing can have been stored. */
-const SPAWN_ERROR_CODES = new Set(['ENOENT', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'ENOMEM', 'E2BIG', 'ENOEXEC']);
-
-/**
- * True only when the child process was never started (string spawn errno).
- * A started process exits with a numeric code or a signal: outcome unknown.
- */
-export function neverStarted(error) {
-  return !!error && typeof error.code === 'string' && SPAWN_ERROR_CODES.has(error.code) && !error.signal;
-}
-
 export function sendToC4(channel, endpoint, content, onReject, { retryDelayMs = 2000, onDone, exec = execFile, isStopped = () => false, timers } = {}) {
   const done = (outcome) => { if (onDone) onDone(outcome); };
   if (!content) {
@@ -153,7 +153,8 @@ export function sendToC4(channel, endpoint, content, onReject, { retryDelayMs = 
           return handleRejection(retryResponse, 'rejected after retry');
         }
         console.error(`[zalo] C4 send failed after retry: ${retryError.message}`);
-        onReject?.(UNCERTAIN_REPLY);
+        // Still never started: nothing can have been stored.
+        onReject?.(neverStarted(retryError) ? GENERIC_REJECT_REPLY : UNCERTAIN_REPLY);
         return done('failed');
       });
     }, retryDelayMs);

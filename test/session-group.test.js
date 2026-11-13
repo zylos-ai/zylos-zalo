@@ -97,7 +97,7 @@ test('sendToC4 outcomes', async () => {
   assert.deepEqual(await run(['killed']), { outcome: 'failed', notices: [UNCERTAIN_REPLY], calls: 1 });
   // Never started: safe to retry once.
   assert.deepEqual(await run(['spawn', 'ok']), { outcome: 'sent', notices: [], calls: 2 });
-  assert.deepEqual(await run(['spawn', 'spawn']), { outcome: 'failed', notices: [UNCERTAIN_REPLY], calls: 2 });
+  assert.deepEqual(await run(['spawn', 'spawn']), { outcome: 'failed', notices: [GENERIC_REJECT_REPLY], calls: 2 });
   assert.deepEqual(await run(['spawn', reject([])]), { outcome: 'rejected', notices: [GENERIC_REJECT_REPLY], calls: 2 });
 });
 
@@ -110,10 +110,10 @@ test('sendToC4 never sends an unmappable endpoint to the overall group', async (
   assert.deepEqual(notices, [GENERIC_REJECT_REPLY]);
 });
 
-test('zgr- ids always map to group, independent of the endpoint type (stable)', () => {
+test('zgr- ids always map to group; zgr- with type:dm throws', () => {
   assert.equal(sessionGroupFromEndpoint('zgr-0d5ae61ad6743f2a6665'), 'group-zgr-0d5ae61ad6743f2a6665');
   assert.equal(sessionGroupFromEndpoint('zgr-0d5a|msg:m1|req:r'), 'group-zgr-0d5a');
-  assert.equal(sessionGroupFromEndpoint('zgr-0d5a|type:dm|msg:m1'), 'group-zgr-0d5a');
+  assert.throws(() => sessionGroupFromEndpoint('zgr-0d5a|type:dm|msg:m1'), /does not match group id/);
   assert.equal(sessionGroupFromEndpoint('zgr-0d5a|type:group'), 'group-zgr-0d5a');
   assert.equal(sessionGroupFromEndpoint('ecf1579cf0c2199c40d3'), 'dm-ecf1579cf0c2199c40d3');
   assert.equal(sessionGroupFromEndpoint('ecf1579cf0c2199c40d3|type:dm|msg:1'), 'dm-ecf1579cf0c2199c40d3');

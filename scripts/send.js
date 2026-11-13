@@ -15,7 +15,7 @@ import { sendMessage, sendPhoto, sendSticker, setApiBaseUrl } from '../src/lib/a
 import { resolveOutboundImage } from '../src/lib/outbound-media.js';
 import { parseEndpoint } from '../src/lib/session-group.js';
 import { outboundDenialReason } from '../src/lib/outbound.js';
-import { findLoggedMessage } from '../src/lib/context.js';
+import { findLoggedMessage, hasLoggedGroupRecord } from '../src/lib/context.js';
 
 const MAX_LENGTH = 2000;
 
@@ -246,7 +246,7 @@ async function main() {
     }
 
     // Destination check against live config, before any send, record or receipt.
-    const denied = outboundDenialReason(config, parsed, findLoggedMessage);
+    const denied = outboundDenialReason(config, parsed, findLoggedMessage, hasLoggedGroupRecord);
     if (denied) {
       markTypingDone();
       emitReceipt({ status: 'failed', type: receiptType, error: `outbound blocked: ${denied}` });

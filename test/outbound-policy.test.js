@@ -110,3 +110,10 @@ test('send script blocks before any network call or record', async () => {
     cleanupDir(home);
   }
 });
+
+test('an id logged as a group anywhere in its chat log is treated as group', () => {
+  const cfg = { owner, dmPolicy: 'open', groupPolicy: 'disabled' };
+  assert.equal(outboundDenialReason(cfg, { chatId: 'g123' }), null);
+  assert.match(outboundDenialReason(cfg, { chatId: 'g123' }, () => null, (id) => id === 'g123'), /not allowed/);
+  assert.match(outboundDenialReason(cfg, { chatId: 'g123', type: 'dm' }, () => null, () => true), /does not match/);
+});

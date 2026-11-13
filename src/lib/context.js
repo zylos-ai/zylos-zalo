@@ -51,6 +51,28 @@ export function findLoggedMessage(chatId, messageId, logsDir = LOGS_DIR) {
   return null;
 }
 
+/**
+ * True when any record in a chat's component log has `chat_type: 'group'`,
+ * so an id once seen as a group is always treated as one.
+ */
+export function hasLoggedGroupRecord(chatId, logsDir = LOGS_DIR) {
+  if (!chatId) return false;
+  let lines;
+  try {
+    lines = fs.readFileSync(path.join(logsDir, logFileName(chatId)), 'utf8').split('\n');
+  } catch {
+    return false;
+  }
+  return lines.some((line) => {
+    if (!line) return false;
+    try {
+      return JSON.parse(line)?.chat_type === 'group';
+    } catch {
+      return false;
+    }
+  });
+}
+
 function getHistoryLimit(chatId, config) {
   const gc = config?.groups?.[String(chatId)];
   return gc?.historyLimit || config?.message?.context_messages || 5;

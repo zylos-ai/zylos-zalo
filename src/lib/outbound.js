@@ -21,16 +21,17 @@ import { resolveChatType } from './chat-type.js';
  * @param {object} config
  * @param {{chatId: string, type?: string, msg?: string}} ep
  * @param {(chatId: string, messageId: string) => object|null} findLogged
+ * @param {(chatId: string) => boolean} [hasLoggedGroup] any group record in the chat's log
  * @returns {string|null} denial reason, or null when allowed
  */
-export function outboundDenialReason(config, ep, findLogged = () => null) {
+export function outboundDenialReason(config, ep, findLogged = () => null, hasLoggedGroup = () => false) {
   if (!ep?.chatId) return 'missing destination id';
   if (ep.chatId === 'admin' || ep.type === 'dm-pairing') {
     return 'admin notices are not replyable; message the owner through their own DM endpoint (<owner user_id>|type:dm)';
   }
   if (ep.type !== undefined && ep.type !== 'dm' && ep.type !== 'group') return `unknown chat type ${ep.type}`;
   const entry = ep.msg ? findLogged(ep.chatId, ep.msg) : null;
-  const kind = resolveChatType(config, ep.chatId, entry);
+  const kind = resolveChatType(config, ep.chatId, entry, !!hasLoggedGroup(ep.chatId));
   if (kind === 'unknown') return `cannot determine the chat type of ${ep.chatId}; refusing to send`;
   if (ep.type !== undefined && ep.type !== kind) {
     return `endpoint type:${ep.type} does not match the real chat type (${kind}) of ${ep.chatId}`;

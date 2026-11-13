@@ -13,9 +13,11 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig, saveConfig, DATA_DIR, repairConfigPermissions } from './lib/config.js';
 import { sendToC4 as sendC4 } from './lib/c4.js';
+import { getMessageInfo as buildMessageInfo } from './lib/message-info.js';
+import { isReplyableDmId, UNSUPPORTED_DM_ID_REPLY } from './lib/chat-type.js';
 import {
   hasOwner, bindOwner, isOwner, isDmAllowed, isGroupOpenFor,
-  isGroupAllowed, isGroupSenderAllowed, getGroupName
+  isGroupAllowed, isGroupSenderAllowed
 } from './lib/auth.js';
 import {
   logAndRecord, ensureReplay, getHistory, formatMessage
@@ -226,16 +228,7 @@ function advancePollingOffset(update) {
 }
 
 function getMessageInfo(update) {
-  const message = update.message || {};
-  const sender = update.sender || message.from || {};
-  const chat = message.chat || {};
-  const isGroup = chat.chat_type === 'GROUP' || message.chat_type === 'GROUP';
-  const chatId = chat.id || message.chat_id || sender.id;
-  const senderId = sender.id || chatId;
-  const userName = sender.display_name || sender.name || String(senderId || chatId);
-  const groupName = chat.name || chat.title || getGroupName(config, chatId, String(chatId));
-  const messageId = message.msg_id || message.message_id || `${Date.now()}`;
-  return { message, sender, chat, isGroup, chatId, senderId, userName, groupName, messageId };
+  return buildMessageInfo(update, config);
 }
 
 function notifyPairingRequest(info) {
@@ -320,6 +313,14 @@ async function handleOwnerPairingCommand(info) {
 
 async function authorizeMessage(info) {
   if (!info.chatId || !info.senderId) return false;
+
+  // Outbound can only reply to plain alphanumeric DM ids (chat-type.js);
+  // refuse others here instead of accepting a message we cannot answer.
+  if (!info.isGroup && !isReplyableDmId(info.chatId)) {
+    console.warn(`[zalo] Rejecting DM from unsupported chat id ${info.chatId}`);
+    sendMessage(botToken, info.chatId, UNSUPPORTED_DM_ID_REPLY).catch(() => {});
+    return false;
+  }
 
   if (!hasOwner(config)) {
     if (info.isGroup) {

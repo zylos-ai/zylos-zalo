@@ -41,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sent to the user). A rejected group is never resent to the overall group.
 - No 30s timeout on c4-receive: killing it after Core stored the row and
   retrying would deliver the message twice. It is retried once
-  only when c4-receive never started (spawn error); any other failure without
+  only when c4-receive never started (spawn error; if the retry also never
+  starts, the user gets the generic "could not process" notice); any other failure without
   a structured result is treated as uncertain: the user gets the "may not have
   reached me" notice and nothing is resent.
 

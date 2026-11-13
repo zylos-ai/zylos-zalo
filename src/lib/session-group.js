@@ -7,9 +7,9 @@
  *   private chat  `<chatId>|type:dm|...`    -> dm-<chatId>
  *   group         `<chatId>|type:group|...` -> group-<chatId>
  *   owner notices `admin|type:dm-pairing`   -> admin
- * Group ids start with `zgr-` and always map to group-<chatId>, whatever the
- * endpoint's `type` says (legacy endpoints without a type, or a wrong
- * `type:dm`). Other ids map to group only when the component wrote
+ * Group ids start with `zgr-` and always map to group-<chatId> (legacy
+ * endpoints without a type included); a `zgr-` id with `type:dm` is an error,
+ * matching the outbound check that refuses the same endpoint. Other ids map to group only when the component wrote
  * `type:group`; otherwise dm. The result depends only on the endpoint string,
  * so it is stable across calls (Core and the scheduler persist it).
  * Zalo ids are used as-is; an id Core would not accept is an error, never
@@ -58,6 +58,9 @@ export function sessionGroupFromEndpoint(endpoint) {
   if (ep.chatId === 'admin') return 'admin';
   if (ep.type !== undefined && ep.type !== 'dm' && ep.type !== 'group') {
     throw new Error(`unknown chat type in endpoint: ${JSON.stringify(ep.type.slice(0, 16))}`);
+  }
+  if (isGroupId(ep.chatId) && ep.type === 'dm') {
+    throw new Error(`endpoint type:dm does not match group id ${JSON.stringify(ep.chatId.slice(0, 64))}`);
   }
   const kind = isGroupId(ep.chatId) || ep.type === 'group' ? 'group' : 'dm';
   const name = `${kind}-${ep.chatId}`;

@@ -73,8 +73,9 @@ node ~/zylos/.claude/skills/zalo/scripts/send.js "<chat_id>|type:dm" "message"
 ```
 
 `send.js` derives DM vs group from the chat id (`zgr-...` = group, plain
-alphanumeric = DM; ids in `groups` config or recorded inbound as groups are
-groups). A `type:` that disagrees with the real type, or an id whose type
+alphanumeric = DM; ids in `groups` config or with any inbound record logged as
+a group are groups). DMs from other ids (e.g. containing `-` or `_`) are
+refused inbound with a notice, since no reply could be sent. A `type:` that disagrees with the real type, or an id whose type
 cannot be determined, is refused. Admin pairing notices (`admin|...`) are not
 replyable: write to the owner through `<owner user_id>|type:dm`.
 
