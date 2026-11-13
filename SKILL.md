@@ -69,8 +69,14 @@ EOF
 
 Or directly (for testing):
 ```bash
-node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "message"
+node ~/zylos/.claude/skills/zalo/scripts/send.js "<chat_id>|type:dm" "message"
 ```
+
+`send.js` derives DM vs group from the chat id (`zgr-...` = group, plain
+alphanumeric = DM; ids in `groups` config or recorded inbound as groups are
+groups). A `type:` that disagrees with the real type, or an id whose type
+cannot be determined, is refused. Admin pairing notices (`admin|...`) are not
+replyable: write to the owner through `<owner user_id>|type:dm`.
 
 ## Session Groups (multi-session Core)
 
@@ -81,11 +87,13 @@ still go through the same `reply via` path.
 | Conversation | Session group | Example |
 |---|---|---|
 | Private chat | `dm-<chat id>` | `dm-1234567890123456789` |
-| Group | `group-<chat id>` | `group-g4f2a9b1c` |
+| Group | `group-<chat id>` | `group-zgr-0d5ae61ad6743f2a6665` |
 | Owner pairing notices | `admin` | `admin` |
 
-- Endpoints carry `type:dm` or `type:group`; older endpoints without a type
-  are private chats.
+- The type is decided by the chat id, not the endpoint's `type`: Zalo group
+  ids start with `zgr-` and always map to `group-<id>` (including older
+  endpoints without a type). Other ids map to `dm-<id>` unless the component
+  wrote `type:group`.
 - The group is passed only if the installed Core lists `--session-group` in
   `c4-receive-options.json`; older Cores behave exactly as before.
 

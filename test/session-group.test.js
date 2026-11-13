@@ -71,7 +71,10 @@ function run(responses, endpoint = '1|type:dm|msg:m') {
     let calls = 0;
     const exec = (_bin, _args, _opts, cb) => {
       const r = responses[calls++];
-      cb(r === 'ok' ? null : new Error('fail'), r === 'ok' ? '' : JSON.stringify(r ?? ''));
+      if (r === 'ok') return cb(null, '');
+      if (r === 'spawn') return cb(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }), '');
+      if (r === 'killed') return cb(Object.assign(new Error('killed'), { code: null, signal: 'SIGTERM' }), '');
+      cb(Object.assign(new Error('fail'), { code: 1 }), JSON.stringify(r ?? ''));
     };
     sendToC4('zalo', endpoint, 'hi', (n) => notices.push(n),
       { exec, retryDelayMs: 1, onDone: (outcome) => resolve({ outcome, notices, calls }) });
@@ -89,7 +92,13 @@ test('sendToC4 outcomes', async () => {
   assert.deepEqual(await run([reject(['row'])]), { outcome: 'committed', notices: [null], calls: 1 });
   assert.deepEqual(await run([reject([])]), { outcome: 'rejected', notices: [GENERIC_REJECT_REPLY], calls: 1 });
   assert.deepEqual(await run([reject(undefined)]), { outcome: 'rejected', notices: [UNCERTAIN_REPLY], calls: 1 });
-  assert.deepEqual(await run([null, null]), { outcome: 'failed', notices: [UNCERTAIN_REPLY], calls: 2 });
+  // Started but no structured result (crash, kill): uncertain, never resent.
+  assert.deepEqual(await run([null]), { outcome: 'failed', notices: [UNCERTAIN_REPLY], calls: 1 });
+  assert.deepEqual(await run(['killed']), { outcome: 'failed', notices: [UNCERTAIN_REPLY], calls: 1 });
+  // Never started: safe to retry once.
+  assert.deepEqual(await run(['spawn', 'ok']), { outcome: 'sent', notices: [], calls: 2 });
+  assert.deepEqual(await run(['spawn', 'spawn']), { outcome: 'failed', notices: [UNCERTAIN_REPLY], calls: 2 });
+  assert.deepEqual(await run(['spawn', reject([])]), { outcome: 'rejected', notices: [GENERIC_REJECT_REPLY], calls: 2 });
 });
 
 test('sendToC4 never sends an unmappable endpoint to the overall group', async () => {
@@ -99,4 +108,13 @@ test('sendToC4 never sends an unmappable endpoint to the overall group', async (
     { exec: () => { called = true; }, onDone: resolve }));
   assert.equal(called, false);
   assert.deepEqual(notices, [GENERIC_REJECT_REPLY]);
+});
+
+test('zgr- ids always map to group, independent of the endpoint type (stable)', () => {
+  assert.equal(sessionGroupFromEndpoint('zgr-0d5ae61ad6743f2a6665'), 'group-zgr-0d5ae61ad6743f2a6665');
+  assert.equal(sessionGroupFromEndpoint('zgr-0d5a|msg:m1|req:r'), 'group-zgr-0d5a');
+  assert.equal(sessionGroupFromEndpoint('zgr-0d5a|type:dm|msg:m1'), 'group-zgr-0d5a');
+  assert.equal(sessionGroupFromEndpoint('zgr-0d5a|type:group'), 'group-zgr-0d5a');
+  assert.equal(sessionGroupFromEndpoint('ecf1579cf0c2199c40d3'), 'dm-ecf1579cf0c2199c40d3');
+  assert.equal(sessionGroupFromEndpoint('ecf1579cf0c2199c40d3|type:dm|msg:1'), 'dm-ecf1579cf0c2199c40d3');
 });

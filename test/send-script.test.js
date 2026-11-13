@@ -25,7 +25,7 @@ test('send script validates CLI arguments and token presence', async () => {
   const home = makeTempHome();
   try {
     writeConfig(home, { enabled: true });
-    result = await runNode(['scripts/send.js', 'chat-1', 'hello'], { env: { HOME: home } });
+    result = await runNode(['scripts/send.js', 'chat1', 'hello'], { env: { HOME: home } });
     assert.equal(result.code, 1);
     assert.match(result.stderr, /botToken not set/);
   } finally {
@@ -43,7 +43,7 @@ test('send script sends text chunks and records outgoing messages', async () => 
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1|req:req-1',
+      'chat1|req:req-1',
       '**hello** [world](https://example.com)'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
@@ -52,7 +52,7 @@ test('send script sends text chunks and records outgoing messages', async () => 
     assert.equal(result.code, 0, result.stderr);
     const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
     assert.equal(calls[0].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendMessage');
-    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', text: 'hello world (https://example.com)' });
+    assert.deepEqual(calls[0].body, { chat_id: 'chat1', text: 'hello world (https://example.com)' });
     assert.equal(fs.existsSync(path.join(home, 'zylos/components/zalo/typing/req-1.done')), true);
   } finally {
     cleanupDir(home);
@@ -69,7 +69,7 @@ test('send script reads message content from stdin before CLI args', async () =>
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1',
+      'chat1',
       'cli fallback'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog },
@@ -78,7 +78,7 @@ test('send script reads message content from stdin before CLI args', async () =>
 
     assert.equal(result.code, 0, result.stderr);
     const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
-    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', text: 'stdin wins' });
+    assert.deepEqual(calls[0].body, { chat_id: 'chat1', text: 'stdin wins' });
   } finally {
     cleanupDir(home);
   }
@@ -94,7 +94,7 @@ test('send script accepts stdin-only message content', async () => {
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1'
+      'chat1'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog },
       input: 'hello from stdin\n'
@@ -102,7 +102,7 @@ test('send script accepts stdin-only message content', async () => {
 
     assert.equal(result.code, 0, result.stderr);
     const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
-    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', text: 'hello from stdin' });
+    assert.deepEqual(calls[0].body, { chat_id: 'chat1', text: 'hello from stdin' });
   } finally {
     cleanupDir(home);
   }
@@ -118,7 +118,7 @@ test('send script uses configured API base and sends stickers', async () => {
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1',
+      'chat1',
       '[MEDIA:sticker]sticker-1'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
@@ -126,7 +126,7 @@ test('send script uses configured API base and sends stickers', async () => {
     assert.equal(result.code, 0, result.stderr);
     const calls = fs.readFileSync(fetchLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
     assert.equal(calls[0].url, 'https://bot-api.zapps.me/bottoken-1/sendSticker');
-    assert.deepEqual(calls[0].body, { chat_id: 'chat-1', sticker: 'sticker-1' });
+    assert.deepEqual(calls[0].body, { chat_id: 'chat1', sticker: 'sticker-1' });
   } finally {
     cleanupDir(home);
   }
@@ -142,7 +142,7 @@ test('send script preflights public image URLs before sendPhoto', async () => {
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1',
+      'chat1',
       '[MEDIA:image]https://example.com/photo.jpg'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
@@ -152,7 +152,7 @@ test('send script preflights public image URLs before sendPhoto', async () => {
     assert.equal(calls[0].method, 'HEAD');
     assert.equal(calls[0].url, 'https://example.com/photo.jpg');
     assert.equal(calls[1].url, 'https://bot-api.zaloplatforms.com/bottoken-1/sendPhoto');
-    assert.deepEqual(calls[1].body, { chat_id: 'chat-1', photo: 'https://example.com/photo.jpg' });
+    assert.deepEqual(calls[1].body, { chat_id: 'chat1', photo: 'https://example.com/photo.jpg' });
   } finally {
     cleanupDir(home);
   }
@@ -179,7 +179,7 @@ test('send script rehosts local image paths through configured public media', as
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1',
+      'chat1',
       `[MEDIA:image]${localImage}`
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
@@ -218,7 +218,7 @@ test('send script rehosts remote images that fail preflight but download as imag
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1',
+      'chat1',
       '[MEDIA:image]https://example.com/not-public/photo.jpg'
     ], {
       env: {
@@ -253,7 +253,7 @@ test('send script accepts HEAD-not-allowed image URLs via ranged GET preflight',
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1',
+      'chat1',
       '[MEDIA:image]https://example.com/photo.jpg'
     ], {
       env: {
@@ -294,7 +294,7 @@ test('send script rejects preflight text/html when rehost download is not an ima
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1|req:req-html',
+      'chat1|req:req-html',
       '[MEDIA:image]https://example.com/page.html'
     ], {
       env: {
@@ -325,7 +325,7 @@ test('send script rejects private-IP image URLs before fetch', async () => {
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1|req:req-private',
+      'chat1|req:req-private',
       '[MEDIA:image]https://127.0.0.1/photo.jpg'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
@@ -345,7 +345,7 @@ test('send script fails with clear error when runtime files are missing', async 
   const home = makeTempHome();
   writeConfig(home, { botToken: 'token-1', internal_port: 9 });
   try {
-    const result = await runNode(['scripts/send.js', 'chat-1', 'hello'], { env: { HOME: home } });
+    const result = await runNode(['scripts/send.js', 'chat1', 'hello'], { env: { HOME: home } });
     assert.equal(result.code, 1);
     assert.match(result.stderr, /service not running or internal token unavailable/);
   } finally {
@@ -363,7 +363,7 @@ test('send script uses effective port from runtime endpoint file', async () => {
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1|req:req-1',
+      'chat1|req:req-1',
       'test message'
     ], {
       env: { HOME: home, ZALO_FETCH_LOG: fetchLog }
@@ -392,7 +392,7 @@ test('send script emits a structured receipt with message ids on text send', asy
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1|req:req-1',
+      'chat1|req:req-1',
       'hello world'
     ], { env: { HOME: home } });
 
@@ -401,7 +401,7 @@ test('send script emits a structured receipt with message ids on text send', asy
     assert.ok(receipt, 'expected a RECEIPT line in stdout');
     assert.equal(receipt.status, 'sent');
     assert.equal(receipt.type, 'text');
-    assert.equal(receipt.chatId, 'chat-1');
+    assert.equal(receipt.chatId, 'chat1');
     assert.equal(receipt.correlationId, 'req-1');
     assert.equal(receipt.chunks, 1);
     assert.deepEqual(receipt.messageIds, ['mock-message-id']);
@@ -420,7 +420,7 @@ test('send script emits a failed receipt and exits non-zero on send error', asyn
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1|req:req-9',
+      'chat1|req:req-9',
       '[MEDIA:image]/tmp/local.jpg'
     ], { env: { HOME: home } });
 
@@ -451,7 +451,7 @@ test('send script surfaces Zalo API response details on media rejection', async 
       '--import',
       path.join(repoRoot, 'test/fixtures/mock-fetch.js'),
       'scripts/send.js',
-      'chat-1|req:req-media',
+      'chat1|req:req-media',
       '[MEDIA:image]https://example.com/coco-photo.jpg'
     ], {
       env: {

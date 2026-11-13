@@ -7,10 +7,16 @@
  *   private chat  `<chatId>|type:dm|...`    -> dm-<chatId>
  *   group         `<chatId>|type:group|...` -> group-<chatId>
  *   owner notices `admin|type:dm-pairing`   -> admin
- * Endpoints without a type (built before 0.2.0) are private chats.
+ * Group ids start with `zgr-` and always map to group-<chatId>, whatever the
+ * endpoint's `type` says (legacy endpoints without a type, or a wrong
+ * `type:dm`). Other ids map to group only when the component wrote
+ * `type:group`; otherwise dm. The result depends only on the endpoint string,
+ * so it is stable across calls (Core and the scheduler persist it).
  * Zalo ids are used as-is; an id Core would not accept is an error, never
  * truncated or hashed. Core prefixes the component namespace; never add it here.
  */
+
+import { isGroupId } from './chat-type.js';
 
 /** Core's limits for the name a component passes (Core adds `<namespace>:`). */
 export const SESSION_GROUP_MAX_LENGTH = 95;
@@ -53,7 +59,8 @@ export function sessionGroupFromEndpoint(endpoint) {
   if (ep.type !== undefined && ep.type !== 'dm' && ep.type !== 'group') {
     throw new Error(`unknown chat type in endpoint: ${JSON.stringify(ep.type.slice(0, 16))}`);
   }
-  const name = `${ep.type === 'group' ? 'group' : 'dm'}-${ep.chatId}`;
+  const kind = isGroupId(ep.chatId) || ep.type === 'group' ? 'group' : 'dm';
+  const name = `${kind}-${ep.chatId}`;
   if (!isValidSessionGroup(name)) {
     throw new Error(`cannot map chat id to a session group: ${JSON.stringify(ep.chatId.slice(0, 64))}`);
   }

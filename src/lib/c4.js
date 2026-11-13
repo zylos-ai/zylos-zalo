@@ -81,6 +81,17 @@ export function parseC4Response(stdout) {
  * @param {function} [opts.onDone] - Test hook: called with the final outcome
  * @param {function} [opts.exec] - Test hook replacing child_process.execFile
  */
+/** Spawn errors where c4-receive never ran, so nothing can have been stored. */
+const SPAWN_ERROR_CODES = new Set(['ENOENT', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'ENOMEM', 'E2BIG', 'ENOEXEC']);
+
+/**
+ * True only when the child process was never started (string spawn errno).
+ * A started process exits with a numeric code or a signal: outcome unknown.
+ */
+export function neverStarted(error) {
+  return !!error && typeof error.code === 'string' && SPAWN_ERROR_CODES.has(error.code) && !error.signal;
+}
+
 export function sendToC4(channel, endpoint, content, onReject, { retryDelayMs = 2000, onDone, exec = execFile, isStopped = () => false, timers } = {}) {
   const done = (outcome) => { if (onDone) onDone(outcome); };
   if (!content) {
@@ -122,8 +133,16 @@ export function sendToC4(channel, endpoint, content, onReject, { retryDelayMs = 
     }
     const response = parseC4Response(stdout);
     if (response?.ok === false && response.error?.message) return handleRejection(response, 'rejected');
+    if (!neverStarted(error)) {
+      // c4-receive ran (or may have) but gave no structured result: it may
+      // already have committed the row. Do not resend (Core: "Inbound commit
+      // state is unknown; do not resend without checking").
+      console.error(`[zalo] C4 send outcome unknown, not resending: ${error.message}`);
+      onReject?.(UNCERTAIN_REPLY);
+      return done('failed');
+    }
     if (isStopped()) return done('stopped');
-    console.warn(`[zalo] C4 send failed, retrying in ${retryDelayMs}ms: ${error.message}`);
+    console.warn(`[zalo] c4-receive did not start (${error.code}), retrying in ${retryDelayMs}ms`);
     const timer = setTimeout(() => {
       timers?.delete(timer);
       if (isStopped()) return done('stopped');

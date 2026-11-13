@@ -394,6 +394,7 @@ function processAuthorizedMessage({ info, text, mediaPath }) {
     message_id: info.messageId,
     user_id: info.senderId,
     user_name: info.userName,
+    chat_type: info.isGroup ? 'group' : 'dm',
     text
   }, config);
 
