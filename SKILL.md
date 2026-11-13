@@ -93,7 +93,8 @@ still go through the same `reply via` path.
 
 - The type is decided by the chat id, not the endpoint's `type`: Zalo group
   ids start with `zgr-` and always map to `group-<id>` (including older
-  endpoints without a type). Other ids map to `dm-<id>` unless the component
+  endpoints without a type); a `zgr-` id with `type:dm` is an error and
+  `scripts/session-group.js` exits 1. Other ids map to `dm-<id>` unless the component
   wrote `type:group`.
 - The group is passed only if the installed Core lists `--session-group` in
   `c4-receive-options.json`; older Cores behave exactly as before.
