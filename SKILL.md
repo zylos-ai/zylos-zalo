@@ -1,6 +1,6 @@
 ---
 name: zalo
-version: 0.1.11
+version: 0.2.0
 description: >-
   Zalo Bot Platform communication channel (polling + webhook modes).
   Use when: (1) replying to Zalo messages (DM or allowed group),
@@ -69,8 +69,51 @@ EOF
 
 Or directly (for testing):
 ```bash
-node ~/zylos/.claude/skills/zalo/scripts/send.js <chat_id> "message"
+node ~/zylos/.claude/skills/zalo/scripts/send.js "<chat_id>|type:dm" "message"
 ```
+
+`send.js` derives DM vs group from the chat id (`zgr-...` = group, plain
+alphanumeric = DM; ids in `groups` config or with any inbound record logged as
+a group are groups). DMs from other ids (e.g. containing `-` or `_`) are
+refused inbound with a notice, since no reply could be sent. A `type:` that disagrees with the real type, or an id whose type
+cannot be determined, is refused. Admin pairing notices (`admin|...`) are not
+replyable: write to the owner through `<owner user_id>|type:dm`.
+
+## Session Groups (multi-session Core)
+
+With a zylos-core that supports multi-session, each inbound message carries a
+session group, so every Zalo chat gets its own conversation thread. Replies
+still go through the same `reply via` path.
+
+| Conversation | Session group | Example |
+|---|---|---|
+| Private chat | `dm-<chat id>` | `dm-1234567890123456789` |
+| Group | `group-<chat id>` | `group-zgr-0d5ae61ad6743f2a6665` |
+| Owner pairing notices | `admin` | `admin` |
+
+- The type is decided by the chat id, not the endpoint's `type`: Zalo group
+  ids start with `zgr-` and always map to `group-<id>` (including older
+  endpoints without a type); a `zgr-` id with `type:dm` is an error and
+  `scripts/session-group.js` exits 1. Other ids map to `dm-<id>` unless the component
+  wrote `type:group`.
+- The group is passed only if the installed Core lists `--session-group` in
+  `c4-receive-options.json`; older Cores behave exactly as before.
+
+```bash
+node ~/zylos/.claude/skills/zalo/scripts/session-group.js "<endpoint>"
+```
+
+## Outbound Policy
+
+`send.js` checks the destination with the inbound rules before sending:
+- **Private chat:** only the owner or users the DM policy allows. A reply to a
+  message the component accepted (found in its chat log) is also allowed while
+  that sender is still allowed.
+- **Group:** groups the group policy allows (`open`, or listed for
+  `allowlist`). In a group that is not allowlisted, only a reply to a message
+  the owner sent there (found in the component log). `disabled` blocks all
+  group sends, matching inbound.
+- Blocked sends exit 1 with `outbound blocked`; nothing is sent or recorded.
 
 ## Media Messages
 
@@ -208,7 +251,7 @@ DM and group access are controlled by independent policies:
 **Group message (groupPolicy):**
 1. `groupPolicy` = `disabled`? → all group messages dropped (including owner)
 2. `groupPolicy` = `open`? → respond from any group
-3. `groupPolicy` = `allowlist`? → only configured groups; unlisted groups → dropped
+3. `groupPolicy` = `allowlist`? → only configured groups; unlisted groups → dropped, except messages from the owner
 4. Per-group `allowFrom` set? → only listed senders pass (owner always bypasses)
 5. `allowFrom: ["*"]` → all group members allowed
 

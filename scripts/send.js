@@ -13,6 +13,9 @@ import path from 'node:path';
 import { loadConfig, DATA_DIR } from '../src/lib/config.js';
 import { sendMessage, sendPhoto, sendSticker, setApiBaseUrl } from '../src/lib/api.js';
 import { resolveOutboundImage } from '../src/lib/outbound-media.js';
+import { parseEndpoint } from '../src/lib/session-group.js';
+import { outboundDenialReason } from '../src/lib/outbound.js';
+import { findLoggedMessage, hasLoggedGroupRecord } from '../src/lib/context.js';
 
 const MAX_LENGTH = 2000;
 
@@ -46,17 +49,6 @@ function readStdin(timeoutMs) {
     process.stdin.on('data', chunk => { data += chunk; });
     process.stdin.on('end', finish);
   });
-}
-
-function parseEndpoint(raw) {
-  const result = { chatId: null, msg: null, req: null };
-  const parts = raw.split('|');
-  result.chatId = parts[0];
-  for (const p of parts.slice(1)) {
-    const [key, ...rest] = p.split(':');
-    result[key] = rest.join(':');
-  }
-  return result;
 }
 
 function safeCorrelationId(raw) {
@@ -251,6 +243,15 @@ async function main() {
       emitReceipt({ status: 'skipped', type: 'text' });
       console.log('Skipped (smart mode)');
       return;
+    }
+
+    // Destination check against live config, before any send, record or receipt.
+    const denied = outboundDenialReason(config, parsed, findLoggedMessage, hasLoggedGroupRecord);
+    if (denied) {
+      markTypingDone();
+      emitReceipt({ status: 'failed', type: receiptType, error: `outbound blocked: ${denied}` });
+      console.error(`Error: outbound blocked: ${denied}`);
+      process.exit(1);
     }
 
     if (message.startsWith('[MEDIA:image]')) {

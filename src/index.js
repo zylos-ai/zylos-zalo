@@ -5,7 +5,6 @@
  * Supports both long polling (default) and webhook delivery modes.
  */
 
-import { execFile } from 'node:child_process';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -13,9 +12,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, saveConfig, DATA_DIR, repairConfigPermissions } from './lib/config.js';
+import { sendToC4 as sendC4 } from './lib/c4.js';
+import { getMessageInfo as buildMessageInfo } from './lib/message-info.js';
+import { isReplyableDmId, UNSUPPORTED_DM_ID_REPLY } from './lib/chat-type.js';
 import {
-  hasOwner, bindOwner, isOwner, isDmAllowed,
-  isGroupAllowed, isGroupSenderAllowed, getGroupName
+  hasOwner, bindOwner, isOwner, isDmAllowed, isGroupOpenFor,
+  isGroupAllowed, isGroupSenderAllowed
 } from './lib/auth.js';
 import {
   logAndRecord, ensureReplay, getHistory, formatMessage
@@ -59,7 +61,6 @@ if (!botToken) {
   process.exit(1);
 }
 
-const C4_RECEIVE = path.join(process.env.HOME, 'zylos/.claude/skills/comm-bridge/scripts/c4-receive.js');
 const webhookDeduper = createDeduper({
   ttlMs: config.webhook?.dedupWindowMs || 5 * 60 * 1000,
   maxSize: config.webhook?.dedupMaxEntries || 1000
@@ -86,51 +87,11 @@ const unsupportedMessageCooldowns = new Map();
 // C4 bridge
 // ============================================================
 
-function parseC4Response(stdout) {
-  if (!stdout) return null;
-  try { return JSON.parse(stdout.trim()); } catch { return null; }
-}
-
-function sendToC4(source, endpoint, content, { onReject, onFail } = {}) {
+// Session group, persisted-aware rejection handling and the single retry
+// live in src/lib/c4.js; this wrapper adds the shutdown guard.
+function sendToC4(source, endpoint, content, onReject) {
   if (!content || stopped) return;
-  const args = [
-    C4_RECEIVE,
-    '--channel', source,
-    '--endpoint', endpoint,
-    '--json',
-    '--content', content
-  ];
-
-  execFile(process.execPath, args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 }, (error, stdout) => {
-    if (!error) {
-      console.log(`[zalo] Sent to C4: ${content.substring(0, 50)}...`);
-      return;
-    }
-    const response = parseC4Response(stdout);
-    if (response && response.ok === false && response.error?.message) {
-      console.warn(`[zalo] C4 rejected (${response.error.code}): ${response.error.message}`);
-      if (onReject) onReject(response.error.message);
-      return;
-    }
-    if (stopped) return;
-    console.warn(`[zalo] C4 send failed, retrying in 2s: ${error.message}`);
-    const retryTimer = setTimeout(() => {
-      c4RetryTimers.delete(retryTimer);
-      if (stopped) return;
-      execFile(process.execPath, args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 }, (retryError, retryStdout) => {
-        if (stopped) return;
-        if (!retryError) return;
-        const retryResponse = parseC4Response(retryStdout);
-        if (retryResponse?.ok === false && retryResponse.error?.message && onReject) {
-          onReject(retryResponse.error.message);
-          return;
-        }
-        console.error(`[zalo] C4 delivery failed after retry: ${retryError.message}`);
-        if (onFail) onFail();
-      });
-    }, 2000);
-    c4RetryTimers.add(retryTimer);
-  });
+  sendC4(source, endpoint, content, onReject, { isStopped: () => stopped, timers: c4RetryTimers });
 }
 
 // ============================================================
@@ -205,8 +166,9 @@ function safeId(raw) {
   return String(raw).replace(/[^a-zA-Z0-9_:-]/g, '_');
 }
 
-function buildEndpoint(chatId, { messageId } = {}) {
-  let endpoint = String(chatId);
+function buildEndpoint(chatId, { messageId, isGroup = false } = {}) {
+  // type marks DM vs group for session grouping and the outbound policy.
+  let endpoint = `${chatId}|type:${isGroup ? 'group' : 'dm'}`;
   if (messageId) {
     const correlationId = safeId(`${chatId}:${messageId}`);
     endpoint += `|msg:${messageId}|req:${correlationId}`;
@@ -266,16 +228,7 @@ function advancePollingOffset(update) {
 }
 
 function getMessageInfo(update) {
-  const message = update.message || {};
-  const sender = update.sender || message.from || {};
-  const chat = message.chat || {};
-  const isGroup = chat.chat_type === 'GROUP' || message.chat_type === 'GROUP';
-  const chatId = chat.id || message.chat_id || sender.id;
-  const senderId = sender.id || chatId;
-  const userName = sender.display_name || sender.name || String(senderId || chatId);
-  const groupName = chat.name || chat.title || getGroupName(config, chatId, String(chatId));
-  const messageId = message.msg_id || message.message_id || `${Date.now()}`;
-  return { message, sender, chat, isGroup, chatId, senderId, userName, groupName, messageId };
+  return buildMessageInfo(update, config);
 }
 
 function notifyPairingRequest(info) {
@@ -361,6 +314,14 @@ async function handleOwnerPairingCommand(info) {
 async function authorizeMessage(info) {
   if (!info.chatId || !info.senderId) return false;
 
+  // Outbound can only reply to plain alphanumeric DM ids (chat-type.js);
+  // refuse others here instead of accepting a message we cannot answer.
+  if (!info.isGroup && !isReplyableDmId(info.chatId)) {
+    console.warn(`[zalo] Rejecting DM from unsupported chat id ${info.chatId}`);
+    sendMessage(botToken, info.chatId, UNSUPPORTED_DM_ID_REPLY).catch(() => {});
+    return false;
+  }
+
   if (!hasOwner(config)) {
     if (info.isGroup) {
       console.log(`[zalo] Ignoring group message before owner is bound: ${info.chatId}`);
@@ -382,7 +343,7 @@ async function authorizeMessage(info) {
   }
 
   if (info.isGroup) {
-    if (!isGroupAllowed(config, info.chatId)) {
+    if (!isGroupOpenFor(config, info.chatId, info.senderId)) {
       console.log(`[zalo] Group ${info.chatId} not allowed, ignoring`);
       return false;
     }
@@ -434,23 +395,19 @@ function processAuthorizedMessage({ info, text, mediaPath }) {
     message_id: info.messageId,
     user_id: info.senderId,
     user_name: info.userName,
+    chat_type: info.isGroup ? 'group' : 'dm',
     text
   }, config);
 
-  const endpoint = buildEndpoint(info.chatId, { messageId: info.messageId });
+  const endpoint = buildEndpoint(info.chatId, { messageId: info.messageId, isGroup: info.isGroup });
   const correlationId = safeId(`${info.chatId}:${info.messageId}`);
   startTyping(info.chatId, correlationId);
 
   const msg = buildC4Message({ info, text, mediaPath });
-  sendToC4('zalo', endpoint, msg, {
-    onReject: (errMsg) => {
-      stopTyping(correlationId);
-      sendMessage(botToken, info.chatId, errMsg).catch(() => {});
-    },
-    onFail: () => {
-      stopTyping(correlationId);
-      sendMessage(botToken, info.chatId, 'Sorry, I could not process your message right now. Please try again.').catch(() => {});
-    }
+  sendToC4('zalo', endpoint, msg, (notice) => {
+    // null: Core already stored the message; only clear typing.
+    stopTyping(correlationId);
+    if (notice) sendMessage(botToken, info.chatId, notice).catch(() => {});
   });
 }
 

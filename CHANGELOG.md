@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-10
+
+### Added
+- Session groups for multi-session zylos-core: private chats are
+  `dm-<chat id>`, groups `group-<chat id>`, owner pairing notices `admin`.
+  Reply endpoints now carry `type:dm` / `type:group`. Group ids start with
+  `zgr-` and always map to `group-<id>`, also for endpoints built before 0.2.0
+  without a type; other ids without `type:group` are private chats. `--session-group` is
+  passed only when the installed Core lists it in `c4-receive-options.json`,
+  so older Cores see unchanged args.
+- `scripts/session-group.js <endpoint>` prints the group for an endpoint.
+- Outbound destination policy in `send.js`, applying the inbound rules: DMs
+  only to chats `isDmAllowed` accepts (owner always), or as a reply to a
+  message the component log shows was accepted from a sender who is still
+  allowed; groups when `isGroupAllowed`, otherwise only a reply to an accepted
+  owner message proven by the group's component log (`disabled` blocks all).
+  The chat type comes from the chat id (`zgr-` prefix, `groups` config, or the
+  inbound record's `chat_type`), never from the endpoint's `type`; a
+  mismatching `type` or an undeterminable id is refused. A DM reply proof must
+  come from that DM's own user. Admin pairing notices are refused with a clear
+  message. Blocked sends exit 1 with `outbound blocked` before any API call or
+  history record.
+
+### Changed
+- The owner's messages in a group that is not allowlisted are now accepted
+  (same as Telegram); `groupPolicy: disabled` still rejects everyone,
+  including the owner.
+- c4-receive rejections follow `error.persisted`: already stored -> no reply
+  and no resend; nothing stored -> "Sorry, I could not process your message
+  right now. Please try again."; unknown -> "this message may not have
+  reached me...". Core's error text only goes to the log (it was previously
+  sent to the user). A rejected group is never resent to the overall group.
+- No 30s timeout on c4-receive: killing it after Core stored the row and
+  retrying would deliver the message twice. It is retried once
+  only when c4-receive never started (spawn error; if the retry also never
+  starts, the user gets the generic "could not process" notice); any other failure without
+  a structured result is treated as uncertain: the user gets the "may not have
+  reached me" notice and nothing is resent.
+
 ## [0.1.11] - 2026-06-03
 
 ### Fixed
