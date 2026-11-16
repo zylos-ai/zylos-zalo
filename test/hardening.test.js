@@ -236,21 +236,13 @@ test('validateDownloadUrl blocks IPv6 loopback and private-mapped addresses', as
 
 // ─── C4 delivery failure handling (ZR2-3 MEDIUM) ───
 
-test('sendToC4 calls onFail after retry transport failure', async () => {
-  await withTempHome(async () => {
-    const mod = await freshImport('src/index.js?sendToC4');
-    // sendToC4 is not exported, so we test the pattern indirectly:
-    // verify the function signature accepts onFail by checking the source
-    const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
-    assert.ok(src.includes('onFail'), 'sendToC4 must accept onFail callback');
-    assert.ok(src.includes('C4 delivery failed after retry'), 'must log terminal failure');
-    assert.ok(src.includes('Sorry, I could not process your message'), 'must notify user on failure');
-  }).catch(() => {
-    // Module may fail to fully initialize without a bot token; that's OK for this structural test
-    const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
-    assert.ok(src.includes('onFail'), 'sendToC4 must accept onFail callback');
-    assert.ok(src.includes('C4 delivery failed after retry'), 'must log terminal failure');
-  });
+test('sendToC4 notifies the user after retry transport failure', () => {
+  // Behavior is covered in session-group.test.js; this pins the wiring.
+  const lib = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/lib/c4.js'), 'utf8');
+  assert.ok(lib.includes('C4 send failed after retry'), 'must log terminal failure');
+  assert.ok(lib.includes('onReject?.(UNCERTAIN_REPLY)'), 'must notify user on terminal failure');
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src/index.js'), 'utf8');
+  assert.ok(src.includes('if (notice) sendMessage(botToken, info.chatId, notice)'), 'index must send the notice');
 });
 
 // ─── Log rotation (ZR2-4 MEDIUM) ───
@@ -400,7 +392,7 @@ test('runtime source clears resource timers on shutdown', () => {
   assert.ok(src.includes('clearInterval(mediaCleanupInterval)'), 'must clear media cleanup interval on shutdown');
   assert.ok(src.includes('c4RetryTimers'), 'must track C4 retry timers');
   assert.ok(src.includes('for (const timer of c4RetryTimers) clearTimeout(timer)'), 'must cancel C4 retry timers on shutdown');
-  assert.ok(src.includes('if (stopped) return'), 'C4 retry path must honor shutdown state');
+  assert.ok(src.includes('isStopped: () => stopped'), 'C4 retry path must honor shutdown state');
 });
 
 test('voice handler passes resolved transcription provider through', () => {

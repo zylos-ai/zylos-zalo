@@ -63,6 +63,24 @@ zylos-zalo/
 
 On startup, polling mode deletes any existing webhook. Webhook mode registers via `setWebhook` and cleans up on shutdown.
 
+### 2.4 Session Groups and Outbound Policy
+
+Inbound messages carry `--session-group` (`dm-<chat id>` / `group-<chat id>`,
+`admin` for pairing notices) when Core advertises the option in
+`c4-receive-options.json` (`src/lib/c4.js`, `src/lib/session-group.js`). The
+reply endpoint is marked `type:dm` / `type:group` when it is built, so the
+lookup needs no stored state. Rejections follow `error.persisted`; a group
+is never dropped and resent to the overall group.
+
+`send.js` applies the inbound access rules to the destination
+(`src/lib/outbound.js`). Inbound accepts the owner in a group that is not
+allowlisted (`isGroupOpenFor`), while `groupPolicy: disabled` rejects
+everyone. Outbound matches: groups need `isGroupAllowed`, or (unless
+disabled) a reply whose `msg` the group's component log shows the owner
+wrote. DMs need `isDmAllowed` on the chat id, or a reply whose `msg` is
+in the chat's component log (written only for accepted messages) from a
+sender who is still allowed. Missing logs deny.
+
 ## 3. Configuration
 
 Located at `~/zylos/components/zalo/config.json`:
